@@ -29,7 +29,11 @@ class ExamplePlayer(
     private val worldWidth: Float,
     private val worldHeight: Float
 ) : GameObject(x, y, 30f, 30f) {
-
+    private enum class State {
+        RUNNING, // 달리기
+        JUMPING, // 점프 중
+        SLIDING  // 슬라이드 중
+    }
     // 이미지 로딩.
     //   Gdx.files.internal: 클래스패스(자원 폴더)에서 파일을 찾아 읽는다.
     //   Texture 는 GPU 메모리에 이미지를 올린 핸들이다.
@@ -39,10 +43,8 @@ class ExamplePlayer(
     private val speed = 200f
 
     override fun update(delta: Float) {
-        if (InputHandler.isKeyPressed(InputHandler.LEFT))  x -= speed * delta
-        if (InputHandler.isKeyPressed(InputHandler.RIGHT)) x += speed * delta
-        if (InputHandler.isKeyPressed(InputHandler.UP))    y += speed * delta
-        if (InputHandler.isKeyPressed(InputHandler.DOWN))  y -= speed * delta
+        // 1. 오른쪽으로 강제 전진 (카메라와 속도를 맞춤)
+        x += 200f * delta
 
         // 월드 경계 안쪽으로 가두기.
         x = x.coerceIn(0f, worldWidth - width)

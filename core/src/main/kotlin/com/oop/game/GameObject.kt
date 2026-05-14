@@ -3,7 +3,7 @@ package com.oop.game
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Rectangle
 
-/*****
+/**
  * 게임에 등장하는 모든 '무엇인가'의 공통 부모.
  *
  * ────────────────────────────────────────────────────────────

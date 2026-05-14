@@ -69,8 +69,8 @@ class ExampleWorld(
     // 플레이어 — 월드 중앙 하단에서 시작.
     //   월드 크기를 함께 넘겨서, 경계 밖으로 못 나가게 한다.
     private val player = ExamplePlayer(
-        x = worldWidth / 2 - 15f,   // 가로 30 의 절반을 빼서 정확히 중앙
-        y = 50f,
+        x = 170f,   //초기 위치 50f로 고정
+        y = 200f,
         worldWidth = worldWidth,
         worldHeight = worldHeight
     )
@@ -125,11 +125,9 @@ class ExampleWorld(
     private fun updateInPlay(delta: Float) {
         // ── 카메라 이동 (WASD) ──
         //   offsetX/Y 를 바꾸면 카메라가 월드 안에서 움직인다.
-        val cameraSpeed = 200f * delta
-        if (InputHandler.isKeyPressed(InputHandler.W)) offsetY += cameraSpeed
-        if (InputHandler.isKeyPressed(InputHandler.S)) offsetY -= cameraSpeed
-        if (InputHandler.isKeyPressed(InputHandler.A)) offsetX -= cameraSpeed
-        if (InputHandler.isKeyPressed(InputHandler.D)) offsetX += cameraSpeed
+
+        val scrollSpeed = 200f // 전진 속도
+        offsetX += scrollSpeed * delta // 매 프레임 자동으로 오른쪽 전진
 
         // 카메라가 월드 경계 밖을 보여주지 않도록 clamp.
         //   보여주는 영역이 [offset, offset+screen] 이어야 하므로

@@ -39,7 +39,7 @@ class OopGame : Game() {
 
     // 월드 크기 — 화면의 1.5배. 카메라(WASD)로 탐험 가능한 영역.
     //   이 값은 내부 설정이므로 private.
-    private val worldWidth = 720
+    private val worldWidth = 10000
     private val worldHeight = 960
 
     /**
