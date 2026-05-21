@@ -89,6 +89,9 @@ class ExampleWorld(
     // 현재 게임 상태 — 입력/충돌에 따라 IN_PLAY ↔ GAME_OVER 로 전환된다.
     private var state = GameState.IN_PLAY
 
+    private var score = 0 //현재 점수
+    private var scoreTimer = 0f // 점수 증가용 타이머
+
     // ── 체스판 배경 설정 (drawBackground() 에서 사용) ──
     //   이게 없으면 검은 배경뿐이라 카메라(WASD) 이동이 눈에 안 보인다.
     //   학생은 자기 게임에선 다른 배경을 그리거나, 그냥 두면 검은 배경이다.
@@ -140,6 +143,14 @@ class ExampleWorld(
 
         // ── 1) 게임 객체 갱신 — 각자 한 프레임씩 진행 ──
         updateAllObjects(delta)
+        scoreTimer += delta // 점수 증가용 시간 누적
+
+        if(scoreTimer >= 1f){
+            score += 5
+            scoreTimer = 0f
+        }
+
+
 
         // ── 2) 상호작용 결정 — 누가 누구와 부딪혀 어떻게 되는지 ──
         //   collidesWith 는 GameObject 의 메서드 → 모든 게임 객체가 자동으로 가짐.
@@ -238,17 +249,14 @@ class ExampleWorld(
             scale = 1.2f
         )
 
-        // 2) 월드 텍스트 (월드 좌표) — 월드 정중앙에 "WORLD CENTER".
-        //    WASD 로 카메라를 움직이면 이 글자도 화면에서 움직인다.
-        drawTextInWorld(
-            text = "WORLD CENTER",
-            worldX = worldWidth / 2 - 70f,
-            worldY = worldHeight / 2,
-            color = Color.CYAN,
-            scale = 1.5f
+        drawTextOnScreen(
+            text = "SCORE: $score",
+            x = screenWidth - 170f, //오른쪽 위치
+            y = screenHeight - 10f, // 위쪽 위치
+            color = Color.WHITE,
+            scale = 1.2f // 글씨 확대
         )
     }
-
     /** 게임 오버 시 화면 중앙에 띄우는 안내 메시지. */
     private fun drawGameOverOverlay() {
         drawTextOnScreen(

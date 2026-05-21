@@ -29,8 +29,7 @@ class ExamplePlayer(
     private val worldWidth: Float,
     private val worldHeight: Float,
     private val groundY: Float //땅 위치 추가
-) : GameObject(x, y, 30f, 30f) {
-
+) : GameObject(x, y, 100f, 100f) {
     private enum class State {
         RUNNING, // 달리기
         JUMPING, // 점프 중
