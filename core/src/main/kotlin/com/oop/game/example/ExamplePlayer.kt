@@ -27,30 +27,83 @@ class ExamplePlayer(
     x: Float,
     y: Float,
     private val worldWidth: Float,
-    private val worldHeight: Float
+    private val worldHeight: Float,
+    private val groundY: Float //땅 위치 추가
 ) : GameObject(x, y, 30f, 30f) {
+
     private enum class State {
         RUNNING, // 달리기
         JUMPING, // 점프 중
         SLIDING  // 슬라이드 중
     }
+
     // 이미지 로딩.
     //   Gdx.files.internal: 클래스패스(자원 폴더)에서 파일을 찾아 읽는다.
     //   Texture 는 GPU 메모리에 이미지를 올린 핸들이다.
     //   src/main/resources/player.png 에 위치.
     private val texture = Texture(Gdx.files.internal("player.png"))
 
+    private var state = State.RUNNING
+
     private val speed = 200f
+    private val jumpPower = 500f
+    private val gravity = -1000f
+
+    private var velocityY = 0f
 
     override fun update(delta: Float) {
-        // 1. 오른쪽으로 강제 전진 (카메라와 속도를 맞춤)
-        x += 200f * delta
-
-        // 월드 경계 안쪽으로 가두기.
-        x = x.coerceIn(0f, worldWidth - width)
-        y = y.coerceIn(0f, worldHeight - height)
+        handleInput() // 키 입력에 따라 각 움직임 함수 호출
+        moveForward(delta) // 프레임마다 지속적으로 우측으로 가도록 함
+        updateState(delta) //달리기, 점프, 슬라이드 상태 변화 감지
+        wholeWorld()
     }
 
+    private fun handleInput() {
+        if (state == State.RUNNING && InputHandler.isKeyJustPressed(InputHandler.SPACE)) {
+            startJump()
+        }
+    }
+
+    private fun updateState(delta: Float) {
+        when (state) {
+            State.RUNNING -> {
+                // 달리는 상태이고 디폴트 상태임
+            }
+
+            State.JUMPING -> {
+                updateJump(delta) //점프 함
+            }
+
+            State.SLIDING -> {
+                // 슬라이드는 나중에 구현
+            }
+        }
+    }
+
+    private fun moveForward(delta: Float) {
+        x += speed * delta //speed는 일단 200f로 고정
+    }
+
+    private fun startJump() {
+        state = State.JUMPING
+        velocityY = jumpPower
+    }
+
+    private fun updateJump(delta: Float) {
+        velocityY += gravity * delta // 중력은 일단 -1000f
+        y += velocityY * delta // y위치는 중력 반영해서 프레임마다 업데이트
+
+        if (y <= groundY) { // y위치가 땅보다 밑이거나 같게 되면 y의 속도는 0f로 초기화 해야됨
+            y = groundY
+            velocityY = 0f
+            state = State.RUNNING // y위치가 초기화 되면 땅에 붙어있다는 뜻이므로 달리기 상태가 되야함
+        }
+    }
+
+    private fun wholeWorld() {
+        x = x.coerceIn(0f, worldWidth - width)
+        y = y.coerceIn(groundY, worldHeight - height)
+    }
     /**
      * 매 프레임 호출 — 자신의 이미지를 그린다.
      *

@@ -66,13 +66,16 @@ class ExampleWorld(
         GAME_OVER
     }
 
+    private val groundY = 200f // 땅 위치는 높이 200f부터.
+
     // 플레이어 — 월드 중앙 하단에서 시작.
     //   월드 크기를 함께 넘겨서, 경계 밖으로 못 나가게 한다.
     private val player = ExamplePlayer(
-        x = 170f,   //초기 위치 50f로 고정
-        y = 200f,
+        x = 100f,   //초기 위치 100f로 고정
+        y = groundY,
         worldWidth = worldWidth,
-        worldHeight = worldHeight
+        worldHeight = worldHeight,
+        groundY = groundY
     )
 
     // 적 — 월드 상단에서 좌우 왕복.
