@@ -244,7 +244,7 @@ class ExampleWorld(
     private fun drawHud() {
         // 1) UI 텍스트 (화면 고정) — 좌측 상단 HP 표시.
         //    카메라가 움직여도 항상 이 위치에 있다.
-        //    ── [작성자: 본인 이름] 기존 고정 텍스트 "HP: 3"에서 실시간 플레이어 체력 변동 연동으로 수정 ──
+        //   기존 고정 텍스트 "HP: 3"에서 실시간 플레이어 체력 변동 연동으로 수정
         drawTextOnScreen(
             text = "HP: ${player.getHp()}",
             x = 10f,
