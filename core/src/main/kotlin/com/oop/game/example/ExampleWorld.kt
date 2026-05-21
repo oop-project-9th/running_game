@@ -145,14 +145,22 @@ class ExampleWorld(
         //   이 예제에선 충돌 시 객체를 죽이지 않고 게임 상태만 바꾼다.
         //   (총알 게임이라면 여기서 bullet.kill(), enemy.kill() 같은 처리)
         if (player.collidesWith(enemy)) {
-            state = GameState.GAME_OVER
+
+            player.takeDamage(1)
+
+            if (player.isDead()) {
+                state = GameState.GAME_OVER
+            }
         }
 
-        // ── 3) 죽은 객체 정리 ──
-        //   현재 예제에선 아무 것도 안 죽으므로 영향 없지만,
-        //   bullet/enemy 가 추가될 때를 대비한 표준 흐름이다.
-        removeDead()
-    }
+
+
+    // ── 3) 죽은 객체 정리 ──
+    //   현재 예제에선 아무 것도 안 죽으므로 영향 없지만,
+    //   bullet/enemy 가 추가될 때를 대비한 표준 흐름이다.
+    removeDead()
+}
+
 
     /** GAME_OVER 상태에서 매 프레임 처리 — ESC 입력만 감시한다. */
     private fun updateGameOver() {
@@ -230,7 +238,7 @@ class ExampleWorld(
         // 1) UI 텍스트 (화면 고정) — 좌측 상단 HP 표시.
         //    카메라가 움직여도 항상 이 위치에 있다.
         drawTextOnScreen(
-            text = "HP: 3",
+            text = "HP: ${player.getHp()}",
             x = 10f,
             y = screenHeight - 10f,   // 화면 y 축은 위로 증가 → 맨 위가 screenHeight
             color = Color.YELLOW,
