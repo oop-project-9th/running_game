@@ -37,12 +37,19 @@ class ExamplePlayer(
     private val texture = Texture(Gdx.files.internal("player.png"))
 
     private val speed = 200f
+    private var hp = 3 // 체력
+
+    private var invincibleTimer = 0f //무적시간
+    private val invincibleTime = 1f
 
     override fun update(delta: Float) {
-        if (InputHandler.isKeyPressed(InputHandler.LEFT))  x -= speed * delta
+        if (invincibleTimer > 0f) {
+            invincibleTimer -= delta //무적시간 감소
+        }
+        if (InputHandler.isKeyPressed(InputHandler.LEFT)) x -= speed * delta
         if (InputHandler.isKeyPressed(InputHandler.RIGHT)) x += speed * delta
-        if (InputHandler.isKeyPressed(InputHandler.UP))    y += speed * delta
-        if (InputHandler.isKeyPressed(InputHandler.DOWN))  y -= speed * delta
+        if (InputHandler.isKeyPressed(InputHandler.UP)) y += speed * delta
+        if (InputHandler.isKeyPressed(InputHandler.DOWN)) y -= speed * delta
 
         // 월드 경계 안쪽으로 가두기.
         x = x.coerceIn(0f, worldWidth - width)
@@ -60,8 +67,35 @@ class ExamplePlayer(
         batch.draw(texture, x, y, width, height)
     }
 
+    fun getHp(): Int {
+        return hp
+    }
+
+    fun takeDamage(damage: Int) {
+
+        // 무적 상태가 아닐 때만 데미지
+        if (invincibleTimer <= 0f) {
+
+            hp -= damage
+
+            // hp가 0 아래로 내려가지 않게 처리
+            if (hp < 0) {
+                hp = 0
+            }
+
+            // 1초 무적 시작
+            invincibleTimer = invincibleTime
+        }
+    }
+
+    fun isDead(): Boolean {
+        return hp <= 0
+    }
+
     /** GPU 자원 정리 — 화면이 닫힐 때 GameWorld 가 호출. */
     override fun dispose() {
         texture.dispose()
     }
 }
+
+
