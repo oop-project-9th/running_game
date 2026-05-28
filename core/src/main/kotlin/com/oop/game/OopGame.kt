@@ -34,8 +34,8 @@ class OopGame : Game() {
 
     // 화면(창) 크기 — DesktopLauncher 가 창 크기 설정에도 이 값을 읽어간다.
     //   public(기본)으로 둔 이유: 외부(DesktopLauncher)에서 접근해야 하므로.
-    val screenWidth = 480
-    val screenHeight = 640
+    val screenWidth = 1120
+    val screenHeight = 630
 
     // 월드 크기 — 화면의 1.5배. 카메라(WASD)로 탐험 가능한 영역.
     //   이 값은 내부 설정이므로 private.

@@ -43,11 +43,14 @@ class ExamplePlayer(
     private val texture = Texture(Gdx.files.internal("player.png"))
 
     private var state = State.RUNNING
+    private val secondJumpCount = 2 //2단 점프 카운트
+    private var jumpCount = 0
+    private val defaultHeight = 100f //달리고 있을때 기본 높이 이고 슬라이드시, 절반으로 줄어들어야함
+    private val slideHeight = 50f
 
     private val speed = 200f
-    private val jumpPower = 500f
-    private val gravity = -1000f
-
+    private val jumpPower = 1200f // 쿠키런 조작감 구현
+    private val gravity = -4000f
     private var velocityY = 0f
 
     // ── [작성자: 본인 이름] HP 및 무적 시스템 변수 추가 ──
@@ -63,29 +66,17 @@ class ExamplePlayer(
 
         handleInput() // 키 입력에 따라 각 움직임 함수 호출
         moveForward(delta) // 프레임마다 지속적으로 우측으로 가도록 함
-        updateState(delta) //달리기, 점프, 슬라이드 상태 변화 감지
+        updateJump(delta) //달리기, 점프, 슬라이드 상태 변화 감지
         wholeWorld()
     }
 
     private fun handleInput() {
-        if (state == State.RUNNING && InputHandler.isKeyJustPressed(InputHandler.SPACE)) {
+        if (updateSlide()) return //슬라이드가 인풋 되어 있는 상태에서는 점프 못하게 리턴
+
+        if (InputHandler.isKeyJustPressed(InputHandler.SPACE) &&
+            jumpCount < secondJumpCount) //기존 running 상태에서 반응하던 키를 점프 상태에서도 가능하게 변경
+        {
             startJump()
-        }
-    }
-
-    private fun updateState(delta: Float) {
-        when (state) {
-            State.RUNNING -> {
-                // 달리는 상태이고 디폴트 상태임
-            }
-
-            State.JUMPING -> {
-                updateJump(delta) //점프 함
-            }
-
-            State.SLIDING -> {
-                // 슬라이드는 나중에 구현
-            }
         }
     }
 
@@ -93,24 +84,61 @@ class ExamplePlayer(
         x += speed * delta //speed는 일단 200f로 고정
     }
 
+    private fun isOnGround(): Boolean { // 땅에 닿아 있는지를 지속적으로 확인해야됨
+        return y <= groundY
+    }
+
     private fun startJump() {
         state = State.JUMPING
         velocityY = jumpPower
+        jumpCount++ // 1단 점프시 0->1로 변경, 2단 점프시 1->2로 변경
     }
 
     private fun updateJump(delta: Float) {
-        velocityY += gravity * delta // 중력은 일단 -1000f
+        if (state != State.JUMPING) return // 점프 상황 아닐때 중력 적용 x
+
+        velocityY += gravity * delta
         y += velocityY * delta // y위치는 중력 반영해서 프레임마다 업데이트
 
-        if (y <= groundY) { // y위치가 땅보다 밑이거나 같게 되면 y의 속도는 0f로 초기화 해야됨
+        if (isOnGround()) { // 캐릭터가 땅에 닿으면 y를 땅으로 고정하고 y가속도 0설정
             y = groundY
             velocityY = 0f
+            jumpCount = 0 // 땅에 닿은 순간이므로 2단 점프 가능 상태로 변경
             state = State.RUNNING // y위치가 초기화 되면 땅에 붙어있다는 뜻이므로 달리기 상태가 되야함
         }
     }
 
+    private fun updateSlide(): Boolean {
+        val slideState = InputHandler.isKeyPressed(InputHandler.Z) && isOnGround()
+
+        if (slideState) {
+            if (state != State.SLIDING) {
+                startSlide()
+            }
+            return true
+        }
+
+        if (state == State.SLIDING) {
+            stopSlide()
+        }
+
+        return false
+    }
+
+    private fun startSlide() { // 슬라이드 시작 상태 슬라이드 하는 높이 만큼 캐릭터 변경
+        state = State.SLIDING
+        height = slideHeight
+        y = groundY
+    }
+
+    private fun stopSlide() { // 슬라이드 끝 디폴트 상태(달리기) 높이만큼 캐릭터 변경
+        height = defaultHeight
+        y = groundY
+        state = State.RUNNING
+    }
+
     private fun wholeWorld() {
-        x = x.coerceIn(0f, worldWidth - width)
+        x = x.coerceAtLeast(0f)//gpt 도움 2...
         y = y.coerceIn(groundY, worldHeight - height)
     }
     /**

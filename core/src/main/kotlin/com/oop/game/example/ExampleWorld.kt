@@ -138,7 +138,7 @@ class ExampleWorld(
         // 카메라가 월드 경계 밖을 보여주지 않도록 clamp.
         //   보여주는 영역이 [offset, offset+screen] 이어야 하므로
         //   offset 은 0 ~ (world - screen) 범위여야 한다.
-        offsetX = offsetX.coerceIn(0f, worldWidth - screenWidth)
+        offsetX = offsetX.coerceAtLeast(0f) //gpt가 카메라 제한 풀려면 이렇게 하라고....
         offsetY = offsetY.coerceIn(0f, worldHeight - screenHeight)
 
         // ── 1) 게임 객체 갱신 — 각자 한 프레임씩 진행 ──
