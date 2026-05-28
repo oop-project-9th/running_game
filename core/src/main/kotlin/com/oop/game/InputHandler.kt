@@ -53,8 +53,6 @@ object InputHandler {
     val DOWN = Input.Keys.DOWN
     val SPACE = Input.Keys.SPACE
     val ESCAPE = Input.Keys.ESCAPE
-    val W = Input.Keys.W
-    val A = Input.Keys.A
-    val S = Input.Keys.S
-    val D = Input.Keys.D
+    val Z = Input.Keys.Z //슬라이드 키
+    val R = Input.Keys.R  // 재시작 키
 }
