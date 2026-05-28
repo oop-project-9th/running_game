@@ -145,7 +145,7 @@ class ExampleWorld(
         updateAllObjects(delta)
         scoreTimer += delta // 점수 증가용 시간 누적
 
-        if(scoreTimer >= 1f){
+        if (scoreTimer >= 1f) {
             score += 5
             scoreTimer = 0f
         }
@@ -230,11 +230,11 @@ class ExampleWorld(
 
         // ── 항상 보이는 UI ──
         drawHud()
+        drawHealthBar() // 체력바 추가
 
         // ── 상태별로 그리는 것이 다름 ──
         when (state) {
-            GameState.IN_PLAY -> {
-                // 플레이 중에는 추가로 그릴 것 없음
+            GameState.IN_PLAY -> { // 플레이 중에는 추가로 그릴 것 없음
             }
             GameState.GAME_OVER -> drawGameOverOverlay()
         }
@@ -242,23 +242,96 @@ class ExampleWorld(
 
     /** 항상 화면에 표시되는 정보 — HP 표시와 월드 중앙 표지. */
     private fun drawHud() {
-        // 1) UI 텍스트 (화면 고정) — 좌측 상단 HP 표시.
-        //    카메라가 움직여도 항상 이 위치에 있다.
-        //   기존 고정 텍스트 "HP: 3"에서 실시간 플레이어 체력 변동 연동으로 수정
         drawTextOnScreen(
-            text = "HP: ${player.getHp()}",
-            x = 10f,
-            y = screenHeight - 10f,   // 화면 y 축은 위로 증가 → 맨 위가 screenHeight
-            color = Color.YELLOW,
-            scale = 1.2f
-        )
-
-        drawTextOnScreen(
-            text = "SCORE: $score",
-            x = screenWidth - 170f, //오른쪽 위치
-            y = screenHeight - 10f, // 위쪽 위치
+            text = "$score",
+            x = screenWidth - 110f, //오른쪽 위치
+            y = screenHeight - 16f, // 위쪽 위치
             color = Color.WHITE,
             scale = 1.2f // 글씨 확대
+        )
+    }
+
+    /**
+     * 플레이어 체력바 UI.
+     *
+     * 기존에는 "HP: 3"처럼 텍스트로만 체력을 표시했다.
+     * 하지만 텍스트만 있으면 현재 체력이 얼마나 남았는지 직관적으로 보기 어렵기 때문에
+     * 막대(bar) 형태의 체력바를 추가했다.
+     *
+     * 체력이 줄어들면 빨간 부분의 너비도 함께 줄어든다.
+     *
+     * 작은 흰 네모 이미지(tileTexture)를
+     * 크기와 색만 바꿔서
+     * 체력바처럼 보이게 만든 것
+     *
+     *
+     * 1. 먼저 체력바보다 조금 더 큰 흰색 직사각형을 그림
+     * → 이게 테두리 역할
+     *
+     * 2. 그 위에 원래 크기의 회색 직사각형을 그림
+     * → 빈 체력바(최대 체력 영역)
+     *
+     * 3. 마지막으로 현재 체력 비율만큼의 빨간 직사각형을 그림
+     * → 실제 남은 체력 표시
+     *
+     */
+
+    private fun drawHealthBar() {
+        val maxHp = 3f
+        val hpRatio = player.getHp() / maxHp //현재 체력이 최대 체력의 몇 %인지 계산
+
+        //체력바 위치
+        val barX = 10f // 왼쪽에서 얼마나 떨어질지
+        val barY = screenHeight - 30f // 위에서 얼마나 떨어질지
+
+        //체력바 크기
+        val barWidth = 150f
+        val barHeight = 14f
+
+        //체력바 두께
+        val borderSize = 2f
+
+        batch.begin() // 렌더링 시작
+
+        // ── 1) 체력바 테두리 ──
+        batch.color = Color.WHITE
+        batch.draw(
+            tileTexture,
+            barX - borderSize,
+            barY - borderSize,
+            barWidth + borderSize * 2,
+            barHeight + borderSize * 2
+        )
+
+        // ── 2) 빈 체력바 배경 ──
+        batch.color = Color.DARK_GRAY
+        batch.draw(
+            tileTexture,
+            barX,
+            barY,
+            barWidth,
+            barHeight
+        )
+
+        // ── 3) 현재 체력 ──
+        batch.color = Color.RED
+        batch.draw(
+            tileTexture,
+            barX,
+            barY,
+            barWidth * hpRatio,
+            barHeight
+        )
+
+        batch.color = Color.WHITE
+        batch.end()
+
+        drawTextOnScreen(
+            text = "${player.getHp()} / 3",
+            x = barX + barWidth + 10f,
+            y = barY + barHeight,
+            color = Color.WHITE,
+            scale = 1f
         )
     }
     /** 게임 오버 시 화면 중앙에 띄우는 안내 메시지. */
