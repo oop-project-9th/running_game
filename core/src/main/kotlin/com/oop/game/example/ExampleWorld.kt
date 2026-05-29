@@ -62,6 +62,7 @@ class ExampleWorld(
      * (7주차에서 배우는 enum class 의 전형적 활용)
      */
     private enum class GameState {
+        MENU,
         IN_PLAY,
         GAME_OVER
     }
@@ -70,7 +71,7 @@ class ExampleWorld(
 
     // 플레이어 — 월드 중앙 하단에서 시작.
     //   월드 크기를 함께 넘겨서, 경계 밖으로 못 나가게 한다.
-    private val player = ExamplePlayer(
+    private var player = ExamplePlayer(
         x = 100f,   //초기 위치 100f로 고정
         y = groundY,
         worldWidth = worldWidth,
@@ -79,18 +80,19 @@ class ExampleWorld(
     )
 
     // 적 — 월드 상단에서 좌우 왕복.
-    private val enemy = ExampleEnemy(
+    private var enemy = ExampleEnemy(
         x = 100f,
         y = worldHeight - 100f,
         minX = 0f,
         maxX = worldWidth
     )
 
-    // 현재 게임 상태 — 입력/충돌에 따라 IN_PLAY ↔ GAME_OVER 로 전환된다.
-    private var state = GameState.IN_PLAY
+    // 현재 게임 상태 — 메뉴에서 시작해 플레이/게임오버로 전환된다.
+    private var state = GameState.MENU
 
     private var score = 0 //현재 점수
     private var scoreTimer = 0f // 점수 증가용 타이머
+    private var blinkTimer = 0f
 
     // ── 체스판 배경 설정 (drawBackground() 에서 사용) ──
     //   이게 없으면 검은 배경뿐이라 카메라(WASD) 이동이 눈에 안 보인다.
@@ -121,10 +123,28 @@ class ExampleWorld(
      * 상태 변화·입력은 update 가 책임진다.)
      */
     override fun update(delta: Float) {
+        blinkTimer += delta
+
         when (state) {
+            GameState.MENU -> updateMenu()
             GameState.IN_PLAY -> updateInPlay(delta)
             GameState.GAME_OVER -> updateGameOver()
         }
+    }
+
+    /** MENU 상태에서 Enter를 누르면 게임 시작. */
+    private fun updateMenu() {
+        if (InputHandler.isKeyJustPressed(InputHandler.ENTER)) {
+            startGame()
+        }
+    }
+
+    private fun startGame() {
+        state = GameState.IN_PLAY
+        score = 0
+        scoreTimer = 0f
+        offsetX = 0f
+        offsetY = 0f
     }
 
     /** IN_PLAY 상태에서 매 프레임 처리 — 카메라 이동, 객체 갱신, 충돌 체크. */
@@ -171,11 +191,40 @@ class ExampleWorld(
 
     /** GAME_OVER 상태에서 매 프레임 처리 — ESC 입력만 감시한다. */
     private fun updateGameOver() {
+        if (InputHandler.isKeyJustPressed(InputHandler.R)) {
+            restartGame()
+        }
+
         // ESC 키가 '막 눌린 순간' 앱 종료.
         //   isKeyJustPressed 로 한 이유: 누르고 있는 동안 매 프레임 exit 호출되지 않게.
         if (InputHandler.isKeyJustPressed(InputHandler.ESCAPE)) {
             Gdx.app.exit()
         }
+    }
+
+    private fun restartGame() {
+        remove(player)
+        remove(enemy)
+        player.dispose()
+        enemy.dispose()
+
+        player = ExamplePlayer(
+            x = 100f,
+            y = groundY,
+            worldWidth = worldWidth,
+            worldHeight = worldHeight,
+            groundY = groundY
+        )
+        enemy = ExampleEnemy(
+            x = 100f,
+            y = worldHeight - 100f,
+            minX = 0f,
+            maxX = worldWidth
+        )
+
+        add(player)
+        add(enemy)
+        startGame()
     }
 
     /**
@@ -228,15 +277,47 @@ class ExampleWorld(
     override fun render(delta: Float) {
         super.render(delta)
 
-        // ── 항상 보이는 UI ──
-        drawHud()
-        drawHealthBar() // 체력바 추가
-
         // ── 상태별로 그리는 것이 다름 ──
         when (state) {
-            GameState.IN_PLAY -> { // 플레이 중에는 추가로 그릴 것 없음
+            GameState.MENU -> drawMenuScreen()
+            GameState.IN_PLAY -> {
+                drawHud()
+                drawHealthBar()
             }
-            GameState.GAME_OVER -> drawGameOverOverlay()
+            GameState.GAME_OVER -> {
+                drawHud()
+                drawHealthBar()
+                drawGameOverOverlay()
+            }
+        }
+    }
+
+    private fun drawMenuScreen() {
+        val centerX = screenWidth / 2f
+        val centerY = screenHeight / 2f
+
+        drawTextOnScreen(
+            text = "RUNNING GAME",
+            x = centerX - 110f,
+            y = centerY + 60f,
+            color = Color.CYAN,
+            scale = 2.5f
+        )
+        drawTextOnScreen(
+            text = "SPACE: Jump   Z: Slide",
+            x = centerX - 120f,
+            y = centerY,
+            color = Color.LIGHT_GRAY,
+            scale = 1f
+        )
+        if ((blinkTimer % 1.2f) < 0.6f) {
+            drawTextOnScreen(
+                text = "PRESS ENTER TO START",
+                x = centerX - 125f,
+                y = centerY - 50f,
+                color = Color.YELLOW,
+                scale = 1.3f
+            )
         }
     }
 
@@ -350,6 +431,15 @@ class ExampleWorld(
             color = Color.WHITE,
             scale = 1f
         )
+        if ((blinkTimer % 1.2f) < 0.6f) {
+            drawTextOnScreen(
+                text = "Press R to restart",
+                x = screenWidth / 2 - 70f,
+                y = screenHeight / 2 - 70f,
+                color = Color.YELLOW,
+                scale = 1f
+            )
+        }
     }
 
     /** 화면이 닫힐 때 — 부모도 dispose 한 뒤 우리만의 자원도 해제. */
