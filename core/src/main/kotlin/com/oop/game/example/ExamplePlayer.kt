@@ -40,12 +40,15 @@ class ExamplePlayer(
     //   Gdx.files.internal: 클래스패스(자원 폴더)에서 파일을 찾아 읽는다.
     //   Texture 는 GPU 메모리에 이미지를 올린 핸들이다.
     //   src/main/resources/player.png 에 위치.
-    private val texture = Texture(Gdx.files.internal("player.png"))
+    private val runTexture = Texture(Gdx.files.internal("player.png"))
+    private val slideTexture = Texture(Gdx.files.internal("slide.png"))
 
     private var state = State.RUNNING
     private val secondJumpCount = 2 //2단 점프 카운트
     private var jumpCount = 0
+    private val defaultWidth = 100f
     private val defaultHeight = 100f //달리고 있을때 기본 높이 이고 슬라이드시, 절반으로 줄어들어야함
+    private val slideWidth = 150f
     private val slideHeight = 50f
 
     private val speed = 200f
@@ -127,11 +130,13 @@ class ExamplePlayer(
 
     private fun startSlide() { // 슬라이드 시작 상태 슬라이드 하는 높이 만큼 캐릭터 변경
         state = State.SLIDING
+        width = slideWidth
         height = slideHeight
         y = groundY
     }
 
     private fun stopSlide() { // 슬라이드 끝 디폴트 상태(달리기) 높이만큼 캐릭터 변경
+        width = defaultWidth
         height = defaultHeight
         y = groundY
         state = State.RUNNING
@@ -149,7 +154,13 @@ class ExamplePlayer(
      * 원본 이미지가 30x30 이고 w=30, h=30 이면 1:1 그대로 그려진다.
      */
     override fun draw(batch: SpriteBatch) {
-        batch.draw(texture, x, y, width, height)
+        val currentTexture = if (state == State.SLIDING) {
+            slideTexture
+        } else {
+            runTexture
+        }
+
+        batch.draw(currentTexture, x, y, width, height)
     }
 
     // ── [작성자: 본인 이름] HP 및 데미지 함수 추가 ──
@@ -173,6 +184,7 @@ class ExamplePlayer(
 
     /** GPU 자원 정리 — 화면이 닫힐 때 GameWorld 가 호출. */
     override fun dispose() {
-        texture.dispose()
+        runTexture.dispose()
+        slideTexture.dispose()
     }
 }
