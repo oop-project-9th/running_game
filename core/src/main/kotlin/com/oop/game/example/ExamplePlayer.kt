@@ -29,7 +29,7 @@ class ExamplePlayer(
     private val worldWidth: Float,
     private val worldHeight: Float,
     private val groundY: Float //땅 위치 추가
-) : GameObject(x, y, 100f, 100f) {
+) : GameObject(x, y, 150f, 150f) {
     private enum class State {
         RUNNING, // 달리기
         JUMPING, // 점프 중
@@ -46,10 +46,10 @@ class ExamplePlayer(
     private var state = State.RUNNING
     private val secondJumpCount = 2 //2단 점프 카운트
     private var jumpCount = 0
-    private val defaultWidth = 100f
-    private val defaultHeight = 100f //달리고 있을때 기본 높이 이고 슬라이드시, 절반으로 줄어들어야함
+    private val defaultWidth = 150f
+    private val defaultHeight = 150f //달리고 있을때 기본 높이 이고 슬라이드시, 절반으로 줄어들어야함
     private val slideWidth = 150f
-    private val slideHeight = 50f
+    private val slideHeight = 100f
 
     private val speed = 200f
     private val jumpPower = 1200f // 쿠키런 조작감 구현
