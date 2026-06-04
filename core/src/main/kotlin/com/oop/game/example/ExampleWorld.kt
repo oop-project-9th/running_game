@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.oop.game.GameWorld
 import com.oop.game.InputHandler
 import kotlin.math.floor
+import kotlin.random.Random
 
 /**
  * ════════════════════════════════════════════════════════════
@@ -21,29 +22,7 @@ import kotlin.math.floor
  * ▸ WASD      : 카메라 이동 (월드가 화면보다 커서 탐험 가능)
  * ▸ ESC       : 게임 오버 후 종료
  *
- * ── 사용 이미지 (core/src/main/resources/) ──
- * ▸ player.png  — 30x30 플레이어 스프라이트
- * ▸ enemy.png   — 40x40 적 스프라이트
- * ▸ tile.png    — 64x64 흰색 정사각형 (체스판 배경에 색만 입혀 사용)
  *
- * ── 게임 상태 ──
- * IN_PLAY   : 일반 진행 (이동·충돌 체크)
- * GAME_OVER : 충돌 후 정지, ESC 입력 대기
- *
- * ── 텍스트 데모 ──
- * ▸ 좌측 상단 "HP: 3"       — 화면 좌표 (카메라 움직여도 고정)
- * ▸ 월드 중앙 "WORLD CENTER" — 월드 좌표 (카메라와 함께 이동)
- * 두 개를 같이 두어, 두 좌표계의 차이를 눈으로 확인할 수 있게 했다.
- *
- * ── 배경 ──
- * tile.png(흰 사각형)를 두 가지 색으로 틴트해 체스판처럼 깐다.
- * 카메라 이동을 눈으로 보여주기 위함이다.
- * GameWorld.drawBackground(batch) 를 override 해서 그린다.
- *
- * @param screenWidth  화면에 보이는 영역 너비
- * @param screenHeight 화면에 보이는 영역 높이
- * @param worldWidth   월드 전체 너비 (화면보다 크면 WASD 로 탐험 가능)
- * @param worldHeight  월드 전체 높이
  */
 class ExampleWorld(
     screenWidth: Float,
@@ -66,6 +45,23 @@ class ExampleWorld(
         IN_PLAY,
         GAME_OVER
     }
+
+    // 장애물 종류 — 작은 박스, 큰 박스, 공중 장애물.
+    private enum class ObstacleType {
+        SMALL,
+        BIG,
+        FLYING
+    }
+
+    // 장애물 정보 — 별도 파일을 만들지 않고 ExampleWorld 내부에서 관리한다.
+    private data class Obstacle(
+        var x: Float,
+        val y: Float,
+        val width: Float,
+        val height: Float,
+        val type: ObstacleType,
+        var isDead: Boolean = false
+    )
 
     private val groundY = 200f // 땅 위치는 높이 200f부터.
 
@@ -98,6 +94,18 @@ class ExampleWorld(
     private val maxHp = 500f
     private var hp = maxHp
 
+    // 랜덤 장애물 생성용 — 작은 박스, 큰 박스, 공중 장애물을 일정 시간마다 생성한다.
+    private val obstacles = mutableListOf<Obstacle>()
+    private var obstacleSpawnTimer = 0f
+    private var nextSpawnTime = 1.5f
+
+    // 점수 300점마다 게임 속도를 조금씩 올리기 위한 기준값.
+    private val speedUpScoreUnit = 300
+    private val baseScrollSpeed = 200f
+    private val scrollSpeedIncrease = 20f
+    private val baseObstacleSpeed = 400f
+    private val obstacleSpeedIncrease = 40f
+
     // ── 체스판 배경 설정 (drawBackground() 에서 사용) ──
     //   이게 없으면 검은 배경뿐이라 카메라(WASD) 이동이 눈에 안 보인다.
     //   학생은 자기 게임에선 다른 배경을 그리거나, 그냥 두면 검은 배경이다.
@@ -105,6 +113,9 @@ class ExampleWorld(
     //   tile.png 는 흰색 64x64 정사각형 한 장. 같은 텍스처에 batch.color 를
     //   바꿔가며 두 가지 색으로 그리는 트릭(틴트) 으로 체스판을 만든다.
     private val tileTexture = Texture(Gdx.files.internal("tile.png"))
+    private val obstacleSmallTexture = Texture(Gdx.files.internal("obstacle_small.png"))
+    private val obstacleBigTexture = Texture(Gdx.files.internal("obstacle_big.png"))
+
     private val bgColorDark = Color(0.08f, 0.08f, 0.08f, 1f)
     private val bgColorLight = Color(0.15f, 0.15f, 0.15f, 1f)
     private val tileSize = 64f
@@ -148,8 +159,35 @@ class ExampleWorld(
         score = 0
         scoreTimer = 0f
         hp = maxHp
+        obstacles.clear()
+        obstacleSpawnTimer = 0f
+        nextSpawnTime = 1.5f
         offsetX = 0f
         offsetY = 0f
+    }
+
+    // 현재 점수를 기준으로 속도 단계 계산.
+    // 예: 0~299점 = 0단계, 300~599점 = 1단계, 600~899점 = 2단계.
+    private fun getSpeedLevel(): Int {
+        return score / speedUpScoreUnit
+    }
+
+    // 점수 300점마다 장애물 이동 속도를 조금씩 증가시킨다.
+    private fun getObstacleSpeed(): Float {
+        return baseObstacleSpeed + getSpeedLevel() * obstacleSpeedIncrease
+    }
+    // 점수 300점마다 카메라 전진 속도를 조금씩 증가시킨다.
+    private fun getScrollSpeed(): Float {
+        return baseScrollSpeed + getSpeedLevel() * scrollSpeedIncrease
+    }
+
+    // 점수 300점마다 장애물 생성 간격을 조금씩 줄인다.
+    // 단, 너무 빠르게 생성되지 않도록 최소 0.6초는 유지한다.
+    private fun getRandomSpawnTime(): Float {
+        val randomBaseTime = Random.nextFloat() * 1.5f + 1f
+        val speedBonus = getSpeedLevel() * 0.1f
+
+        return (randomBaseTime - speedBonus).coerceAtLeast(0.6f)
     }
 
     /** IN_PLAY 상태에서 매 프레임 처리 — 카메라 이동, 객체 갱신, 충돌 체크. */
@@ -157,7 +195,7 @@ class ExampleWorld(
         // ── 카메라 이동 (WASD) ──
         //   offsetX/Y 를 바꾸면 카메라가 월드 안에서 움직인다.
 
-        val scrollSpeed = 200f // 전진 속도
+        val scrollSpeed = getScrollSpeed() // 전진 속도
         offsetX += scrollSpeed * delta // 매 프레임 자동으로 오른쪽 전진
 
         // 카메라가 월드 경계 밖을 보여주지 않도록 clamp.
@@ -168,6 +206,9 @@ class ExampleWorld(
 
         // ── 1) 게임 객체 갱신 — 각자 한 프레임씩 진행 ──
         updateAllObjects(delta)
+        updateObstacles(delta)
+        spawnRandomObstacle(delta)
+
         scoreTimer += delta // 점수 증가용 시간 누적
 
         if (scoreTimer >= 1f) {
@@ -189,18 +230,127 @@ class ExampleWorld(
         //   (총알 게임이라면 여기서 bullet.kill(), enemy.kill() 같은 처리)
         //   ── [작성자: 본인 이름] 기존 바로 게임오버 로직에서 HP 차감 및 사망 조건부 게임오버로 수정 결합 ──
         if (player.collidesWith(enemy)) {
-            hp -= 20f // 부딪히면 HP 추가 차감
-
             if (hp <= 0f) {
                 hp = 0f
                 state = GameState.GAME_OVER // HP가 0이 되면 비로소 최종 게임오버
             }
         }
 
+        checkObstacleCollision()
+
         // ── 3) 죽은 객체 정리 ──
         //   현재 예제에선 아무 것도 안 죽으므로 영향 없지만,
         //   bullet/enemy 가 추가될 때를 대비한 표준 흐름이다.
         removeDead()
+    }
+
+    // 장애물 이동 및 화면 밖으로 나간 장애물 제거 처리.
+    private fun updateObstacles(delta: Float) {
+        val obstacleSpeed = getObstacleSpeed()
+
+        for (obstacle in obstacles) {
+            obstacle.x -= obstacleSpeed * delta
+
+            if (obstacle.x + obstacle.width < offsetX - 100f) {
+                obstacle.isDead = true
+            }
+        }
+
+        obstacles.removeIf {
+            it.isDead
+        }
+    }
+
+    // 일정 시간마다 작은 박스, 큰 박스, 공중 장애물 중 하나를 랜덤으로 생성한다.
+    private fun spawnRandomObstacle(delta: Float) {
+        obstacleSpawnTimer += delta
+
+        if (obstacleSpawnTimer >= nextSpawnTime) {
+            val randomType = ObstacleType.values().random()
+
+            val obstacleWidth = when (randomType) {
+                ObstacleType.SMALL -> 80f
+                ObstacleType.BIG -> 115f
+                ObstacleType.FLYING -> 70f
+            }
+
+            val obstacleHeight = when (randomType) {
+                ObstacleType.SMALL -> 80f
+                ObstacleType.BIG -> 130f
+                ObstacleType.FLYING -> 70f
+            }
+
+            val obstacleY = when (randomType) {
+                ObstacleType.SMALL -> groundY
+                ObstacleType.BIG -> groundY
+                ObstacleType.FLYING -> groundY + 105f
+            }
+
+            obstacles.add(
+                Obstacle(
+                    x = offsetX + screenWidth + 100f,
+                    y = obstacleY,
+                    width = obstacleWidth,
+                    height = obstacleHeight,
+                    type = randomType
+                )
+            )
+
+            obstacleSpawnTimer = 0f
+            nextSpawnTime = getRandomSpawnTime()
+        }
+    }
+
+    // 플레이어와 장애물이 부딪혔는지 확인하고, 부딪히면 HP를 차감한다.
+    private fun checkObstacleCollision() {
+        for (obstacle in obstacles) {
+            if (!obstacle.isDead && isPlayerCollidingWithObstacle(obstacle)) {
+                hp -= 30f
+                obstacle.isDead = true
+
+                if (hp <= 0f) {
+                    hp = 0f
+                    state = GameState.GAME_OVER
+                }
+            }
+        }
+
+        obstacles.removeIf {
+            it.isDead
+        }
+    }
+
+    // 플레이어와 장애물의 사각형 충돌 판정.
+    private fun isPlayerCollidingWithObstacle(obstacle: Obstacle): Boolean {
+        val playerPaddingX = 12f
+        val playerPaddingY = 10f
+
+        val obstaclePaddingX = when (obstacle.type) {
+            ObstacleType.SMALL -> 10f
+            ObstacleType.BIG -> 14f
+            ObstacleType.FLYING -> 12f
+        }
+
+        val obstaclePaddingY = when (obstacle.type) {
+            ObstacleType.SMALL -> 8f
+            ObstacleType.BIG -> 12f
+            ObstacleType.FLYING -> 10f
+        }
+
+        val playerLeft = player.x + playerPaddingX
+        val playerRight = player.x + player.width - playerPaddingX
+        val playerBottom = player.y + playerPaddingY
+        val playerTop = player.y + player.height - playerPaddingY
+
+        val obstacleLeft = obstacle.x + obstaclePaddingX
+        val obstacleRight = obstacle.x + obstacle.width - obstaclePaddingX
+        val obstacleBottom = obstacle.y + obstaclePaddingY
+        val obstacleTop = obstacle.y + obstacle.height - obstaclePaddingY
+
+        return playerRight > obstacleLeft &&
+                playerLeft < obstacleRight &&
+                playerTop > obstacleBottom &&
+                playerBottom < obstacleTop
     }
 
     /** GAME_OVER 상태에서 매 프레임 처리 — ESC 입력만 감시한다. */
@@ -291,6 +441,8 @@ class ExampleWorld(
     override fun render(delta: Float) {
         super.render(delta)
 
+        drawObstacles()
+
         // ── 상태별로 그리는 것이 다름 ──
         when (state) {
             GameState.MENU -> drawMenuScreen()
@@ -304,6 +456,33 @@ class ExampleWorld(
                 drawGameOverOverlay()
             }
         }
+    }
+
+    // 장애물을 화면에 그린다.
+    // 작은 박스, 큰 박스, 공중 장애물을 색과 크기로 구분해서 표시한다.
+    private fun drawObstacles() {
+        batch.begin()
+
+        for (obstacle in obstacles) {
+            val texture = when (obstacle.type) {
+                ObstacleType.SMALL -> obstacleSmallTexture
+                ObstacleType.BIG -> obstacleBigTexture
+                ObstacleType.FLYING -> obstacleSmallTexture
+            }
+
+            batch.color = Color.WHITE
+
+            batch.draw(
+                texture,
+                obstacle.x - offsetX,
+                obstacle.y - offsetY,
+                obstacle.width,
+                obstacle.height
+            )
+        }
+
+        batch.color = Color.WHITE
+        batch.end()
     }
 
     private fun drawMenuScreen() {
@@ -349,12 +528,6 @@ class ExampleWorld(
     }
 
     /**
-     * 플레이어 체력바 UI.
-     *
-     * 기존에는 "HP: 3"처럼 텍스트로만 체력을 표시했다.
-     * 하지만 텍스트만 있으면 현재 체력이 얼마나 남았는지 직관적으로 보기 어렵기 때문에
-     * 막대(bar) 형태의 체력바를 추가했다.
-     *
      * 체력이 줄어들면 빨간 부분의 너비도 함께 줄어든다.
      *
      * 작은 흰 네모 이미지(tileTexture)를
@@ -462,5 +635,7 @@ class ExampleWorld(
     override fun dispose() {
         super.dispose()
         tileTexture.dispose()
+        obstacleSmallTexture.dispose()
+        obstacleBigTexture.dispose()
     }
 }
