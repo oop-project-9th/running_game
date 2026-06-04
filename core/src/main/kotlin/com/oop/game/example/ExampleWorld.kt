@@ -101,8 +101,11 @@ class ExampleWorld(
 
     // 점수 300점마다 게임 속도를 조금씩 올리기 위한 기준값.
     private val speedUpScoreUnit = 300
+
+    // 카메라 전진 속도는 고정한다.
+    // 장애물 속도만 빨라지게 해야 캐릭터가 뒤로 밀려 보이지 않는다.
     private val baseScrollSpeed = 200f
-    private val scrollSpeedIncrease = 20f
+
     private val baseObstacleSpeed = 400f
     private val obstacleSpeedIncrease = 40f
 
@@ -176,9 +179,11 @@ class ExampleWorld(
     private fun getObstacleSpeed(): Float {
         return baseObstacleSpeed + getSpeedLevel() * obstacleSpeedIncrease
     }
-    // 점수 300점마다 카메라 전진 속도를 조금씩 증가시킨다.
+
+    // 카메라 전진 속도는 점수와 상관없이 고정한다.
+    // 기존처럼 점수 300점마다 카메라가 빨라지면 플레이어가 뒤로 밀려 보인다.
     private fun getScrollSpeed(): Float {
-        return baseScrollSpeed + getSpeedLevel() * scrollSpeedIncrease
+        return baseScrollSpeed
     }
 
     // 점수 300점마다 장애물 생성 간격을 조금씩 줄인다.
