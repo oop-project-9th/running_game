@@ -94,6 +94,10 @@ class ExampleWorld(
     private var scoreTimer = 0f // 점수 증가용 타이머
     private var blinkTimer = 0f
 
+    // 쿠키런 방식 HP 시스템 — 시간이 지날수록 체력이 줄어든다.
+    private val maxHp = 500f
+    private var hp = maxHp
+
     // ── 체스판 배경 설정 (drawBackground() 에서 사용) ──
     //   이게 없으면 검은 배경뿐이라 카메라(WASD) 이동이 눈에 안 보인다.
     //   학생은 자기 게임에선 다른 배경을 그리거나, 그냥 두면 검은 배경이다.
@@ -143,6 +147,7 @@ class ExampleWorld(
         state = GameState.IN_PLAY
         score = 0
         scoreTimer = 0f
+        hp = maxHp
         offsetX = 0f
         offsetY = 0f
     }
@@ -170,15 +175,24 @@ class ExampleWorld(
             scoreTimer = 0f
         }
 
+        // 쿠키런처럼 시간이 지날수록 HP가 초당 1씩 감소한다.
+        hp -= 1f * delta
+
+        if (hp <= 0f) {
+            hp = 0f
+            state = GameState.GAME_OVER
+        }
+
         // ── 2) 상호작용 결정 — 누가 누구와 부딪혀 어떻게 되는지 ──
         //   collidesWith 는 GameObject 의 메서드 → 모든 게임 객체가 자동으로 가짐.
         //   이 예제에선 충돌 시 객체를 죽이지 않고 게임 상태만 바꾼다.
         //   (총알 게임이라면 여기서 bullet.kill(), enemy.kill() 같은 처리)
         //   ── [작성자: 본인 이름] 기존 바로 게임오버 로직에서 HP 차감 및 사망 조건부 게임오버로 수정 결합 ──
         if (player.collidesWith(enemy)) {
-            player.takeDamage(1) // 부딪히면 무적 체크 후 데미지 차감
+            hp -= 20f // 부딪히면 HP 추가 차감
 
-            if (player.isDead()) {
+            if (hp <= 0f) {
+                hp = 0f
                 state = GameState.GAME_OVER // HP가 0이 되면 비로소 최종 게임오버
             }
         }
@@ -323,10 +337,12 @@ class ExampleWorld(
 
     /** 항상 화면에 표시되는 정보 — HP 표시와 월드 중앙 표지. */
     private fun drawHud() {
+        val hudY = screenHeight - 16f
+
         drawTextOnScreen(
-            text = "$score",
-            x = screenWidth - 110f, //오른쪽 위치
-            y = screenHeight - 16f, // 위쪽 위치
+            text = "SCORE: $score",
+            x = screenWidth - 160f, //오른쪽 위치
+            y = hudY, // 위쪽 위치
             color = Color.WHITE,
             scale = 1.2f // 글씨 확대
         )
@@ -358,19 +374,18 @@ class ExampleWorld(
      */
 
     private fun drawHealthBar() {
-        val maxHp = 3f
-        val hpRatio = player.getHp() / maxHp //현재 체력이 최대 체력의 몇 %인지 계산
+        val hpRatio = hp / maxHp //현재 체력이 최대 체력의 몇 %인지 계산
 
         //체력바 위치
         val barX = 10f // 왼쪽에서 얼마나 떨어질지
-        val barY = screenHeight - 30f // 위에서 얼마나 떨어질지
+        val barY = screenHeight - 40f // 위에서 얼마나 떨어질지
 
         //체력바 크기
-        val barWidth = 150f
-        val barHeight = 14f
+        val barWidth = 300f
+        val barHeight = 24f
 
         //체력바 두께
-        val borderSize = 2f
+        val borderSize = 3f
 
         batch.begin() // 렌더링 시작
 
@@ -408,13 +423,14 @@ class ExampleWorld(
         batch.end()
 
         drawTextOnScreen(
-            text = "${player.getHp()} / 3",
+            text = "${hp.toInt()} / ${maxHp.toInt()}",
             x = barX + barWidth + 10f,
             y = barY + barHeight,
             color = Color.WHITE,
             scale = 1f
         )
     }
+
     /** 게임 오버 시 화면 중앙에 띄우는 안내 메시지. */
     private fun drawGameOverOverlay() {
         drawTextOnScreen(
