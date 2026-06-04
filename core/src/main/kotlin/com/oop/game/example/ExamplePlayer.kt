@@ -48,8 +48,8 @@ class ExamplePlayer(
     private var jumpCount = 0
     private val defaultWidth = 150f
     private val defaultHeight = 150f //달리고 있을때 기본 높이 이고 슬라이드시, 절반으로 줄어들어야함
-    private val slideWidth = 150f
-    private val slideHeight = 100f
+    private val slideWidth = 135f
+    private val slideHeight = 90f
 
     private val speed = 200f
     private val jumpPower = 1200f // 쿠키런 조작감 구현
@@ -76,7 +76,7 @@ class ExamplePlayer(
     private fun handleInput() {
         if (updateSlide()) return //슬라이드가 인풋 되어 있는 상태에서는 점프 못하게 리턴
 
-        if (InputHandler.isKeyJustPressed(InputHandler.SPACE) &&
+        if (InputHandler.isKeyJustPressed(InputHandler.SPACE) && //얘네도 통일성을 위해 함수로 바꿀 예정
             jumpCount < secondJumpCount) //기존 running 상태에서 반응하던 키를 점프 상태에서도 가능하게 변경
         {
             startJump()
@@ -113,15 +113,15 @@ class ExamplePlayer(
 
     private fun updateSlide(): Boolean {
         val slideState = InputHandler.isKeyPressed(InputHandler.Z) && isOnGround()
-
-        if (slideState) {
+        //z 누르고 있는 여부로 슬라이드 스테이트 조정
+        if (slideState) { //z키를 누르고 있는데 슬라이드 중이 아니면 슬라이드 상태로 전환
             if (state != State.SLIDING) {
                 startSlide()
             }
-            return true
+            return true //z키를 누르고 있는 상태이므로 리턴해서 상태 유지
         }
 
-        if (state == State.SLIDING) {
+        if (state == State.SLIDING) { //z키를 누르고 있는 중이 아니므로 슬라이드 상태 취소
             stopSlide()
         }
 
