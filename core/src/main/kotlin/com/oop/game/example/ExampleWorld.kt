@@ -204,7 +204,7 @@ class ExampleWorld(
         offsetX = offsetX.coerceAtLeast(0f) //gpt가 카메라 제한 풀려면 이렇게 하라고....
         offsetY = offsetY.coerceIn(0f, worldHeight - screenHeight)
 
-        // ── 1) 게임 객체 갱신 — 각자 한 프레임씩 진행 ──
+        // ── 게임 객체 갱신 — 각자 한 프레임씩 진행 ──
         updateAllObjects(delta)
         updateObstacles(delta)
         spawnRandomObstacle(delta)
@@ -224,11 +224,9 @@ class ExampleWorld(
             state = GameState.GAME_OVER
         }
 
-        // ── 2) 상호작용 결정 — 누가 누구와 부딪혀 어떻게 되는지 ──
+        // ── 상호작용 결정 — 누가 누구와 부딪혀 어떻게 되는지 ──
         //   collidesWith 는 GameObject 의 메서드 → 모든 게임 객체가 자동으로 가짐.
-        //   이 예제에선 충돌 시 객체를 죽이지 않고 게임 상태만 바꾼다.
-        //   (총알 게임이라면 여기서 bullet.kill(), enemy.kill() 같은 처리)
-        //   ── [작성자: 본인 이름] 기존 바로 게임오버 로직에서 HP 차감 및 사망 조건부 게임오버로 수정 결합 ──
+        //   기존 바로 게임오버 로직에서 HP 차감 및 사망 조건부 게임오버로 수정 결합
         if (player.collidesWith(enemy)) {
             if (hp <= 0f) {
                 hp = 0f
@@ -238,7 +236,7 @@ class ExampleWorld(
 
         checkObstacleCollision()
 
-        // ── 3) 죽은 객체 정리 ──
+        // ── 죽은 객체 정리 ──
         //   현재 예제에선 아무 것도 안 죽으므로 영향 없지만,
         //   bullet/enemy 가 추가될 때를 대비한 표준 흐름이다.
         removeDead()
