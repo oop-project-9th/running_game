@@ -9,21 +9,7 @@ import com.oop.game.InputHandler
 import kotlin.math.floor
 import kotlin.random.Random
 
-/**
- * ════════════════════════════════════════════════════════════
- * 게임 월드 예제 — Player vs Enemy 회피 게임 (이미지 사용).
- * ════════════════════════════════════════════════════════════
- *
- * GameWorld 를 상속해 만든 가장 작은 플레이 가능한 예제.
- * 학생은 이 파일을 참고해서 자기만의 월드를 만들면 된다.
- *
- * ── 조작법 ──
- * ▸ 화살표 키  : 플레이어 이동
- * ▸ WASD      : 카메라 이동 (월드가 화면보다 커서 탐험 가능)
- * ▸ ESC       : 게임 오버 후 종료
- *
- *
- */
+
 class ExampleWorld(
     screenWidth: Float,
     screenHeight: Float,
@@ -31,15 +17,6 @@ class ExampleWorld(
     worldHeight: Float
 ) : GameWorld(screenWidth, screenHeight, worldWidth, worldHeight) {
 
-    /**
-     * 게임의 현재 상태를 나타내는 열거형.
-     *
-     * Boolean 깃발(isGameOver) 대신 enum 을 쓰는 이유:
-     * ▸ 상태 가짓수가 늘어날 때 깔끔히 확장 가능 (예: PAUSED, MENU, VICTORY)
-     * ▸ when 으로 분기하면 'else' 없이 모든 상태를 다뤘는지 컴파일러가 체크해줌
-     * ▸ 코드를 읽을 때 "이 게임에 어떤 상태들이 있는가" 가 한눈에 보임
-     * (7주차에서 배우는 enum class 의 전형적 활용)
-     */
     private enum class GameState {
         MENU,
         IN_PLAY,
@@ -101,23 +78,21 @@ class ExampleWorld(
 
     // 점수 300점마다 게임 속도를 조금씩 올리기 위한 기준값.
     private val speedUpScoreUnit = 300
+
+    // 카메라 전진 속도는 고정한다.
+    // 장애물 속도만 빨라지게 해야 캐릭터가 뒤로 밀려 보이지 않는다.
     private val baseScrollSpeed = 200f
-    private val scrollSpeedIncrease = 20f
+
     private val baseObstacleSpeed = 400f
     private val obstacleSpeedIncrease = 40f
 
-    // ── 체스판 배경 설정 (drawBackground() 에서 사용) ──
-    //   이게 없으면 검은 배경뿐이라 카메라(WASD) 이동이 눈에 안 보인다.
-    //   학생은 자기 게임에선 다른 배경을 그리거나, 그냥 두면 검은 배경이다.
-    //
-    //   tile.png 는 흰색 64x64 정사각형 한 장. 같은 텍스처에 batch.color 를
-    //   바꿔가며 두 가지 색으로 그리는 트릭(틴트) 으로 체스판을 만든다.
+    // ── 배경/지형 그리기용 기본 텍스처 ──
+    // tile.png 는 흰색 64x64 정사각형 한 장.
+    // 같은 텍스처에 batch.color 를 바꿔가며 하늘, 구름, 지형을 색으로 그린다.
     private val tileTexture = Texture(Gdx.files.internal("tile.png"))
     private val obstacleSmallTexture = Texture(Gdx.files.internal("obstacle_small.png"))
     private val obstacleBigTexture = Texture(Gdx.files.internal("obstacle_big.png"))
 
-    private val bgColorDark = Color(0.08f, 0.08f, 0.08f, 1f)
-    private val bgColorLight = Color(0.15f, 0.15f, 0.15f, 1f)
     private val tileSize = 64f
 
     /**
@@ -176,9 +151,11 @@ class ExampleWorld(
     private fun getObstacleSpeed(): Float {
         return baseObstacleSpeed + getSpeedLevel() * obstacleSpeedIncrease
     }
-    // 점수 300점마다 카메라 전진 속도를 조금씩 증가시킨다.
+
+    // 카메라 전진 속도는 점수와 상관없이 고정한다.
+    // 기존처럼 점수 300점마다 카메라가 빨라지면 플레이어가 뒤로 밀려 보인다.
     private fun getScrollSpeed(): Float {
-        return baseScrollSpeed + getSpeedLevel() * scrollSpeedIncrease
+        return baseScrollSpeed
     }
 
     // 점수 300점마다 장애물 생성 간격을 조금씩 줄인다.
@@ -395,9 +372,7 @@ class ExampleWorld(
      * 부모가 이미 batch.begin() 을 호출한 상태에서 이 함수를 부르므로,
      * 여기선 batch.draw() 호출만 하면 된다. (begin/end 를 또 부르면 안 된다)
      *
-     * 카메라(offset) 에 따라 타일 위치가 바뀌어 이동감을 준다.
-     * 타일 인덱스 자체는 월드 좌표 격자에서 변하지 않지만,
-     * 각 타일을 그릴 때 offset 만큼 빼서 화면 좌표로 변환한다.
+     * 카메라(offset) 에 따라 구름 위치가 조금씩 바뀌어 이동감을 준다.
      *
      * 색을 입히는 방법:
      * batch.color 를 바꾼 뒤 batch.draw 하면 텍스처가 그 색으로 곱해져 그려진다.
@@ -405,40 +380,91 @@ class ExampleWorld(
      * 끝에 다시 흰색으로 되돌려두지 않으면 그 다음 그리는 것까지 영향을 받으니 주의.
      */
     override fun drawBackground(batch: SpriteBatch) {
-        // 현재 카메라 시작점이 속한 타일 인덱스 (여유분으로 -1)
-        val startCol = floor(offsetX / tileSize).toInt() - 1
-        val startRow = floor(offsetY / tileSize).toInt() - 1
-        // 화면을 채우는 데 필요한 타일 개수 (여유분 +3)
-        val cols = (screenWidth / tileSize).toInt() + 3
-        val rows = (screenHeight / tileSize).toInt() + 3
+        drawSky(batch)
+    }
 
-        for (row in startRow until startRow + rows) {
-            for (col in startCol until startCol + cols) {
-                // 행+열이 짝수면 어둡게, 홀수면 밝게 → 체스판 패턴
-                batch.color = if ((row + col) % 2 == 0) bgColorDark else bgColorLight
+    // 이미지 없이 색으로 하늘을 그린다.
+    // 파란색 줄을 여러 개 쌓아서 그라데이션처럼 보이게 만들고,
+    // 사각형을 여러 개 겹쳐서 픽셀 구름 느낌을 낸다.
+    private fun drawSky(batch: SpriteBatch) {
+        // ── 1) 하늘 그라데이션 ──
+        // 화면을 여러 개의 가로 줄로 나눈 뒤, 아래쪽은 밝게 위쪽은 진하게 칠한다.
+        val stripeCount = 28
+        val stripeHeight = screenHeight / stripeCount
 
-                // 월드 좌표의 타일 위치에서 offset 만큼 빼면 화면 좌표
-                val drawX = col * tileSize - offsetX
-                val drawY = row * tileSize - offsetY
-                batch.draw(tileTexture, drawX, drawY, tileSize, tileSize)
-            }
+        for (i in 0 until stripeCount) {
+            val t = i.toFloat() / stripeCount
+
+            batch.color = Color(
+                0.03f + t * 0.16f,
+                0.42f + t * 0.34f,
+                0.88f + t * 0.10f,
+                1f
+            )
+
+            batch.draw(
+                tileTexture,
+                0f,
+                i * stripeHeight,
+                screenWidth,
+                stripeHeight + 1f
+            )
         }
 
-        // 배경에 입힌 색이 다음 그리기(게임 객체)에 영향을 주지 않도록 흰색으로 복원.
+        // ── 2) 먼 구름 ──
+        // alpha 값을 낮게 해서 멀리 있는 구름처럼 연하게 보이게 한다.
+        drawCloud(batch, 120f - offsetX * 0.08f, screenHeight - 260f, 0.75f, 0.45f)
+        drawCloud(batch, 670f - offsetX * 0.06f, screenHeight - 170f, 0.70f, 0.38f)
+        drawCloud(batch, 1180f - offsetX * 0.07f, screenHeight - 330f, 0.80f, 0.42f)
+
+        // ── 3) 가까운 구름 ──
+        // alpha 값을 높게 해서 이미지처럼 뚜렷한 하얀 구름 느낌을 준다.
+        drawCloud(batch, 220f - offsetX * 0.15f, screenHeight - 160f, 1.25f, 0.95f)
+        drawCloud(batch, 560f - offsetX * 0.12f, screenHeight - 300f, 1.05f, 0.90f)
+        drawCloud(batch, 1030f - offsetX * 0.14f, screenHeight - 210f, 1.15f, 0.95f)
+        drawCloud(batch, 1320f - offsetX * 0.13f, screenHeight - 390f, 1.00f, 0.90f)
+
         batch.color = Color.WHITE
     }
 
-    /**
-     * 매 프레임 그리기 — 부모가 배경·객체까지 그려준 뒤, 텍스트 UI 를 얹는다.
-     *
-     * 이 함수에서는 '그리기' 만 한다. 입력 처리·상태 변경은 update() 의 책임.
-     *
-     * 주의: super.render(delta) 가 화면 clear + 배경 + 객체까지 그리므로,
-     * 텍스트는 반드시 super 호출 **이후** 그려야 가려지지 않는다.
-     */
+    // 사각형 여러 개를 겹쳐서 구름을 그린다.
+    // 원형 이미지를 쓰지 않아도, 작은 사각형을 덩어리로 배치하면 픽셀아트 구름 느낌이 난다.
+    private fun drawCloud(batch: SpriteBatch, x: Float, y: Float, scale: Float, alpha: Float) {
+        val wrapWidth = screenWidth + 420f
+        val cloudX = ((x % wrapWidth) + wrapWidth) % wrapWidth - 210f
+
+        // ── 1) 구름 아래쪽의 연한 하늘색 그림자 ──
+        batch.color = Color(0.62f, 0.86f, 1.00f, alpha * 0.55f)
+        batch.draw(tileTexture, cloudX - 65f * scale, y - 12f * scale, 260f * scale, 13f * scale)
+        batch.draw(tileTexture, cloudX - 10f * scale, y + 2f * scale, 130f * scale, 20f * scale)
+        batch.draw(tileTexture, cloudX + 95f * scale, y - 2f * scale, 80f * scale, 16f * scale)
+
+        // ── 2) 구름 흰색 본체 ──
+        batch.color = Color(1f, 1f, 1f, alpha)
+        batch.draw(tileTexture, cloudX - 30f * scale, y, 58f * scale, 28f * scale)
+        batch.draw(tileTexture, cloudX + 10f * scale, y + 16f * scale, 75f * scale, 42f * scale)
+        batch.draw(tileTexture, cloudX + 70f * scale, y + 6f * scale, 62f * scale, 30f * scale)
+        batch.draw(tileTexture, cloudX + 120f * scale, y, 52f * scale, 22f * scale)
+
+        // ── 3) 구름 위쪽 하이라이트 ──
+        batch.color = Color(1f, 1f, 1f, alpha * 0.85f)
+        batch.draw(tileTexture, cloudX + 22f * scale, y + 42f * scale, 45f * scale, 12f * scale)
+        batch.draw(tileTexture, cloudX + 78f * scale, y + 28f * scale, 35f * scale, 10f * scale)
+
+        // ── 4) 아래쪽 긴 꼬리 구름 ──
+        batch.color = Color(0.86f, 0.96f, 1f, alpha * 0.75f)
+        batch.draw(tileTexture, cloudX - 90f * scale, y - 18f * scale, 310f * scale, 8f * scale)
+        batch.draw(tileTexture, cloudX - 120f * scale, y - 15f * scale, 70f * scale, 5f * scale)
+
+        batch.color = Color.WHITE
+    }
+
     override fun render(delta: Float) {
         super.render(delta)
 
+        // 이미지 없이 색으로 지형을 먼저 그린다.
+        // 그 다음 장애물을 그리면 장애물이 지형 위에 서 있는 것처럼 보인다.
+        drawGroundByColor()
         drawObstacles()
 
         // ── 상태별로 그리는 것이 다름 ──
@@ -454,6 +480,99 @@ class ExampleWorld(
                 drawGameOverOverlay()
             }
         }
+    }
+
+    // 이미지 없이 색으로 지형을 그린다.
+    // 위에는 초록색 잔디, 아래는 갈색 흙으로 화면 아래를 꽉 채운다.
+    private fun drawGroundByColor() {
+        batch.begin()
+
+        // 플레이어와 장애물이 서 있는 기준선.
+        // groundY를 기준으로 화면 좌표로 바꿔준다.
+        val groundTopY = groundY - offsetY - 8f
+
+        // 흙이 화면 아래를 꽉 채우도록 높이를 계산한다.
+        val dirtHeight = groundTopY.coerceAtLeast(0f)
+
+        // ── 1) 흙 전체 ──
+        batch.color = Color(0.45f, 0.28f, 0.08f, 1f)
+        batch.draw(
+            tileTexture,
+            0f,
+            0f,
+            screenWidth,
+            dirtHeight
+        )
+
+        // ── 2) 흙 윗부분의 어두운 그림자 ──
+        batch.color = Color(0.25f, 0.16f, 0.06f, 1f)
+        batch.draw(
+            tileTexture,
+            0f,
+            groundTopY - 18f,
+            screenWidth,
+            18f
+        )
+
+        // ── 3) 잔디 밑 어두운 부분 ──
+        batch.color = Color(0.04f, 0.28f, 0.10f, 1f)
+        batch.draw(
+            tileTexture,
+            0f,
+            groundTopY - 8f,
+            screenWidth,
+            8f
+        )
+
+        // ── 4) 잔디 윗면 ──
+        batch.color = Color(0.10f, 0.65f, 0.18f, 1f)
+        batch.draw(
+            tileTexture,
+            0f,
+            groundTopY,
+            screenWidth,
+            10f
+        )
+
+        // ── 5) 잔디 하이라이트 ──
+        batch.color = Color(0.25f, 0.85f, 0.25f, 1f)
+        batch.draw(
+            tileTexture,
+            0f,
+            groundTopY + 7f,
+            screenWidth,
+            3f
+        )
+
+        // ── 6) 흙 안의 작은 돌들 ──
+        // 이미지 없이 작은 회색 네모를 여러 개 찍어서 흙 텍스처 느낌을 낸다.
+        for (i in 0 until 55) {
+            val stoneX = ((i * 137 - offsetX.toInt()) % screenWidth.toInt()).toFloat()
+            val fixedStoneX = if (stoneX < 0f) stoneX + screenWidth else stoneX
+
+            val stoneY = ((i * 53) % dirtHeight.toInt().coerceAtLeast(1)).toFloat()
+
+            batch.color = Color(0.55f, 0.52f, 0.45f, 1f)
+            batch.draw(
+                tileTexture,
+                fixedStoneX,
+                stoneY,
+                5f,
+                5f
+            )
+
+            batch.color = Color(0.30f, 0.28f, 0.23f, 1f)
+            batch.draw(
+                tileTexture,
+                fixedStoneX + 1f,
+                stoneY - 1f,
+                4f,
+                2f
+            )
+        }
+
+        batch.color = Color.WHITE
+        batch.end()
     }
 
     // 장애물을 화면에 그린다.
@@ -525,24 +644,6 @@ class ExampleWorld(
         )
     }
 
-    /**
-     * 체력이 줄어들면 빨간 부분의 너비도 함께 줄어든다.
-     *
-     * 작은 흰 네모 이미지(tileTexture)를
-     * 크기와 색만 바꿔서
-     * 체력바처럼 보이게 만든 것
-     *
-     *
-     * 1. 먼저 체력바보다 조금 더 큰 흰색 직사각형을 그림
-     * → 이게 테두리 역할
-     *
-     * 2. 그 위에 원래 크기의 회색 직사각형을 그림
-     * → 빈 체력바(최대 체력 영역)
-     *
-     * 3. 마지막으로 현재 체력 비율만큼의 빨간 직사각형을 그림
-     * → 실제 남은 체력 표시
-     *
-     */
 
     private fun drawHealthBar() {
         val hpRatio = hp / maxHp //현재 체력이 최대 체력의 몇 %인지 계산
