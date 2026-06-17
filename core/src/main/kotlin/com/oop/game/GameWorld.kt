@@ -5,8 +5,16 @@ import com.badlogic.gdx.ScreenAdapter
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
-import com.badlogic.gdx.graphics.g2d.BitmapFont
+import com.badlogic.gdx.graphics.Pixmap
+import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+import java.io.File
+import kotlin.math.max
+import kotlin.math.roundToInt
+import java.awt.Color as AwtColor
+import java.awt.Font as AwtFont
 
 /**
  * 게임 한 장면 = '월드 하나' 의 추상 기본 클래스.
@@ -62,7 +70,7 @@ abstract class GameWorld(
     // SpriteBatch: 이미지(Texture) 와 글자를 화면에 찍어주는 도구.
     //   배경 그리기·게임 객체·텍스트 모두 이 batch 하나로 처리한다.
     val batch = SpriteBatch()
-    val font = BitmapFont()
+    private val textRenderer = AwtTextRenderer()
 
     // 카메라 오프셋 — 월드의 어느 지점이 화면 좌하단에 오는지.
     //   이 두 값만 바꾸면 카메라가 움직이는 효과가 난다.
@@ -248,10 +256,12 @@ abstract class GameWorld(
         scale: Float = 1f
     ) {
         batch.projectionMatrix = camera.combined
-        font.color = color
-        font.data.setScale(scale)
+        val shadow = textRenderer.prepare(text, Color(0f, 0f, 0f, 0.82f), scale)
+        val foreground = textRenderer.prepare(text, color, scale)
+
         batch.begin()
-        font.draw(batch, text, x, y)
+        textRenderer.draw(batch, shadow, x + 2f, y - 2f)
+        textRenderer.draw(batch, foreground, x, y)
         batch.end()
     }
 
@@ -286,9 +296,129 @@ abstract class GameWorld(
      */
     override fun dispose() {
         batch.dispose()
-        font.dispose()
+        textRenderer.dispose()
         for (obj in gameObjects) {
             obj.dispose()
+        }
+    }
+
+    private class AwtTextRenderer {
+        private data class TextKey(
+            val text: String,
+            val rgba: Int,
+            val pixelSize: Int
+        )
+
+        data class RenderedText(
+            val texture: Texture,
+            val baselineOffset: Float
+        )
+
+        private val maxCacheSize = 256
+        private val fontFile = findKoreanFontFile()
+        private val fontsBySize = mutableMapOf<Int, AwtFont>()
+        private val cache = object : LinkedHashMap<TextKey, RenderedText>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TextKey, RenderedText>): Boolean {
+                if (size <= maxCacheSize) return false
+                eldest.value.texture.dispose()
+                return true
+            }
+        }
+
+        fun prepare(text: String, color: Color, scale: Float): RenderedText {
+            val pixelSize = max(9, (22f * scale).roundToInt())
+            val key = TextKey(text, Color.rgba8888(color), pixelSize)
+            return cache.getOrPut(key) {
+                render(text, color, pixelSize)
+            }
+        }
+
+        fun draw(batch: SpriteBatch, renderedText: RenderedText, x: Float, baselineY: Float) {
+            batch.draw(renderedText.texture, x, baselineY - renderedText.baselineOffset)
+        }
+
+        fun dispose() {
+            cache.values.forEach { it.texture.dispose() }
+            cache.clear()
+        }
+
+        private fun render(text: String, color: Color, pixelSize: Int): RenderedText {
+            val safeText = if (text.isEmpty()) " " else text
+            val font = fontFor(pixelSize)
+            val padding = max(3, (pixelSize * 0.18f).roundToInt())
+            val probe = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+            val probeGraphics = probe.createGraphics()
+            applyTextHints(probeGraphics)
+            probeGraphics.font = font
+            val metrics = probeGraphics.fontMetrics
+            val width = max(1, metrics.stringWidth(safeText) + padding * 2)
+            val height = max(1, metrics.height + padding * 2)
+            val baseline = padding + metrics.ascent
+            probeGraphics.dispose()
+
+            val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+            val graphics = image.createGraphics()
+            applyTextHints(graphics)
+            graphics.font = font
+            graphics.color = AwtColor(color.r, color.g, color.b, color.a)
+            graphics.drawString(safeText, padding, baseline)
+            graphics.dispose()
+
+            val pixmap = Pixmap(width, height, Pixmap.Format.RGBA8888)
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    val argb = image.getRGB(x, y)
+                    val alpha = argb ushr 24 and 0xff
+                    val red = argb ushr 16 and 0xff
+                    val green = argb ushr 8 and 0xff
+                    val blue = argb and 0xff
+                    pixmap.drawPixel(x, y, red shl 24 or (green shl 16) or (blue shl 8) or alpha)
+                }
+            }
+
+            val texture = Texture(pixmap)
+            texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+            pixmap.dispose()
+
+            return RenderedText(texture, baseline.toFloat())
+        }
+
+        private fun fontFor(pixelSize: Int): AwtFont {
+            return fontsBySize.getOrPut(pixelSize) {
+                val loadedFont = runCatching {
+                    if (fontFile != null) {
+                        AwtFont.createFont(AwtFont.TRUETYPE_FONT, fontFile)
+                    } else {
+                        AwtFont("Malgun Gothic", AwtFont.PLAIN, pixelSize)
+                    }
+                }.getOrElse {
+                    AwtFont("SansSerif", AwtFont.PLAIN, pixelSize)
+                }
+
+                loadedFont.deriveFont(AwtFont.PLAIN, pixelSize.toFloat())
+            }
+        }
+
+        private fun applyTextHints(graphics: java.awt.Graphics2D) {
+            graphics.setRenderingHint(
+                RenderingHints.KEY_TEXT_ANTIALIASING,
+                RenderingHints.VALUE_TEXT_ANTIALIAS_ON
+            )
+            graphics.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON
+            )
+        }
+
+        private fun findKoreanFontFile(): File? {
+            val candidates = listOf(
+                File("C:/Windows/Fonts/malgun.ttf"),
+                File("C:/Windows/Fonts/malgunbd.ttf"),
+                File("C:/Windows/Fonts/NotoSansKR-Regular.otf"),
+                File("C:/Windows/Fonts/NotoSansCJKkr-Regular.otf")
+            )
+
+            return candidates.firstOrNull { it.exists() }
         }
     }
 }

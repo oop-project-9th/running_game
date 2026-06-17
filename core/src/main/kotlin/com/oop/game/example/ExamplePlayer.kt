@@ -44,7 +44,8 @@ class ExamplePlayer(
     private val slideTexture = Texture(Gdx.files.internal("slide.png"))
 
     private var state = State.RUNNING
-    private val secondJumpCount = 2 //2단 점프 카운트
+    private val baseJumpCount = 2 // 기본은 2단 점프
+    private var bonusJumpCount = 0
     private var jumpCount = 0
     private val defaultWidth = 150f
     private val defaultHeight = 150f //달리고 있을때 기본 높이 이고 슬라이드시, 절반으로 줄어들어야함
@@ -77,7 +78,7 @@ class ExamplePlayer(
         if (updateSlide()) return //슬라이드가 인풋 되어 있는 상태에서는 점프 못하게 리턴
 
         if (InputHandler.isKeyJustPressed(InputHandler.SPACE) && //얘네도 통일성을 위해 함수로 바꿀 예정
-            jumpCount < secondJumpCount) //기존 running 상태에서 반응하던 키를 점프 상태에서도 가능하게 변경
+            jumpCount < getMaxJumpCount()) // 아이템 효과로 3단 점프 이상도 가능
         {
             startJump()
         }
@@ -89,6 +90,10 @@ class ExamplePlayer(
 
     private fun isOnGround(): Boolean { // 땅에 닿아 있는지를 지속적으로 확인해야됨
         return y <= groundY
+    }
+
+    private fun getMaxJumpCount(): Int {
+        return baseJumpCount + bonusJumpCount
     }
 
     private fun startJump() {
@@ -146,6 +151,45 @@ class ExamplePlayer(
         x = x.coerceAtLeast(0f)//gpt 도움 2...
         y = y.coerceIn(groundY, worldHeight - height)
     }
+
+    fun setBonusJumpCount(value: Int) {
+        bonusJumpCount = value.coerceIn(0, 3)
+    }
+
+    fun isAirborne(): Boolean {
+        return !isOnGround()
+    }
+
+    fun isGrounded(): Boolean {
+        return isOnGround()
+    }
+
+    fun isSliding(): Boolean {
+        return state == State.SLIDING
+    }
+
+    fun launchUp(power: Float) {
+        if (state == State.SLIDING) {
+            stopSlide()
+        }
+
+        state = State.JUMPING
+        velocityY = power
+        jumpCount = 1
+    }
+
+    fun forceLanding() {
+        y = groundY
+        velocityY = 0f
+        jumpCount = 0
+        state = State.RUNNING
+        stopSlide()
+    }
+
+    fun dashForward(distance: Float) {
+        x += distance
+    }
+
     /**
      * 매 프레임 호출 — 자신의 이미지를 그린다.
      *
