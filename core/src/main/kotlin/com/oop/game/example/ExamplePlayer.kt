@@ -1,6 +1,7 @@
 package com.oop.game.example
 
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.audio.Sound
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.oop.game.GameObject
@@ -40,8 +41,26 @@ class ExamplePlayer(
     //   Gdx.files.internal: 클래스패스(자원 폴더)에서 파일을 찾아 읽는다.
     //   Texture 는 GPU 메모리에 이미지를 올린 핸들이다.
     //   src/main/resources/player.png 에 위치.
-    private val runTexture = Texture(Gdx.files.internal("player.png"))
-    private val slideTexture = Texture(Gdx.files.internal("slide.png"))
+    private val runTextures = listOf(
+        Texture(Gdx.files.internal("player_run_1.png")),
+        Texture(Gdx.files.internal("player_run_2.png")),
+        Texture(Gdx.files.internal("player_run_3.png")),
+        Texture(Gdx.files.internal("player_run_4.png")),
+        Texture(Gdx.files.internal("player_run_5.png")),
+        Texture(Gdx.files.internal("player_run_6.png")),
+        Texture(Gdx.files.internal("player_run_7.png")),
+        Texture(Gdx.files.internal("player_run_8.png"))
+    )
+    private val jumpTexture = Texture(Gdx.files.internal("player_jump.png"))
+    private val doubleJumpTexture = Texture(Gdx.files.internal("player_double_jump.png"))
+    private val fallTexture = Texture(Gdx.files.internal("player_fall.png"))
+    private val slideTexture = Texture(Gdx.files.internal("player_slide_motion.png"))
+    private val hurtTexture = Texture(Gdx.files.internal("player_hurt.png"))
+
+    private val jumpSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_jump.wav"))
+    private val doubleJumpSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_double_jump.wav"))
+    private val slideSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_slide.wav"))
+    private val landSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_land.wav"))
 
     private var state = State.RUNNING
     private val baseJumpCount = 2 // 기본은 2단 점프
@@ -56,6 +75,9 @@ class ExamplePlayer(
     private val jumpPower = 1200f // 쿠키런 조작감 구현
     private val gravity = -4000f
     private var velocityY = 0f
+    private var runAnimationTimer = 0f
+    private var hurtMotionTimer = 0f
+    private var lastJumpWasDouble = false
 
     // ── [작성자: 본인 이름] HP 및 무적 시스템 변수 추가 ──
     private var hp = 3
@@ -63,14 +85,23 @@ class ExamplePlayer(
     private val invincibleTime = 1f
 
     override fun update(delta: Float) {
+        val wasJumping = state == State.JUMPING || y > groundY
+
         // ── [작성자: 본인 이름] 무적 시간 감소 로직 추가 ──
         if (invincibleTimer > 0f) {
             invincibleTimer -= delta
         }
+        if (hurtMotionTimer > 0f) {
+            hurtMotionTimer = (hurtMotionTimer - delta).coerceAtLeast(0f)
+        }
+        runAnimationTimer += delta
 
         handleInput() // 키 입력에 따라 각 움직임 함수 호출
         moveForward(delta) // 프레임마다 지속적으로 우측으로 가도록 함
         updateJump(delta) //달리기, 점프, 슬라이드 상태 변화 감지
+        if (wasJumping && isOnGround() && state == State.RUNNING) {
+            landSound.play(0.45f)
+        }
         wholeWorld()
     }
 
@@ -97,9 +128,17 @@ class ExamplePlayer(
     }
 
     private fun startJump() {
+        val isDoubleJump = jumpCount > 0
         state = State.JUMPING
         velocityY = jumpPower
+        lastJumpWasDouble = isDoubleJump
         jumpCount++ // 1단 점프시 0->1로 변경, 2단 점프시 1->2로 변경
+
+        if (isDoubleJump) {
+            doubleJumpSound.play(0.55f)
+        } else {
+            jumpSound.play(0.55f)
+        }
     }
 
     private fun updateJump(delta: Float) {
@@ -112,6 +151,7 @@ class ExamplePlayer(
             y = groundY
             velocityY = 0f
             jumpCount = 0 // 땅에 닿은 순간이므로 2단 점프 가능 상태로 변경
+            lastJumpWasDouble = false
             state = State.RUNNING // y위치가 초기화 되면 땅에 붙어있다는 뜻이므로 달리기 상태가 되야함
         }
     }
@@ -138,6 +178,7 @@ class ExamplePlayer(
         width = slideWidth
         height = slideHeight
         y = groundY
+        slideSound.play(0.45f)
     }
 
     private fun stopSlide() { // 슬라이드 끝 디폴트 상태(달리기) 높이만큼 캐릭터 변경
@@ -176,18 +217,44 @@ class ExamplePlayer(
         state = State.JUMPING
         velocityY = power
         jumpCount = 1
+        lastJumpWasDouble = false
+        jumpSound.play(0.45f)
     }
 
     fun forceLanding() {
+        val shouldPlayLandSound = state == State.JUMPING || y > groundY
         y = groundY
         velocityY = 0f
         jumpCount = 0
+        lastJumpWasDouble = false
         state = State.RUNNING
-        stopSlide()
+        width = defaultWidth
+        height = defaultHeight
+        if (shouldPlayLandSound) {
+            landSound.play(0.45f)
+        }
     }
 
     fun dashForward(distance: Float) {
         x += distance
+    }
+
+    fun moveTo(newX: Float, newY: Float) {
+        width = defaultWidth
+        height = defaultHeight
+        x = newX.coerceAtLeast(0f)
+        y = newY.coerceIn(groundY, worldHeight - height)
+        velocityY = 0f
+        lastJumpWasDouble = false
+
+        if (isOnGround()) {
+            y = groundY
+            jumpCount = 0
+            state = State.RUNNING
+        } else {
+            jumpCount = 1
+            state = State.JUMPING
+        }
     }
 
     /**
@@ -198,10 +265,16 @@ class ExamplePlayer(
      * 원본 이미지가 30x30 이고 w=30, h=30 이면 1:1 그대로 그려진다.
      */
     override fun draw(batch: SpriteBatch) {
-        val currentTexture = if (state == State.SLIDING) {
-            slideTexture
-        } else {
-            runTexture
+        val currentTexture = when {
+            hurtMotionTimer > 0f -> hurtTexture
+            state == State.SLIDING -> slideTexture
+            state == State.JUMPING && velocityY < -60f -> fallTexture
+            state == State.JUMPING && lastJumpWasDouble -> doubleJumpTexture
+            state == State.JUMPING -> jumpTexture
+            else -> {
+                val frameIndex = (runAnimationTimer / 0.06f).toInt() % runTextures.size
+                runTextures[frameIndex]
+            }
         }
 
         batch.draw(currentTexture, x, y, width, height)
@@ -222,13 +295,25 @@ class ExamplePlayer(
         }
     }
 
+    fun playHurtMotion() {
+        hurtMotionTimer = 0.28f
+    }
+
     fun isDead(): Boolean {
         return hp <= 0
     }
 
     /** GPU 자원 정리 — 화면이 닫힐 때 GameWorld 가 호출. */
     override fun dispose() {
-        runTexture.dispose()
+        runTextures.forEach { it.dispose() }
+        jumpTexture.dispose()
+        doubleJumpTexture.dispose()
+        fallTexture.dispose()
         slideTexture.dispose()
+        hurtTexture.dispose()
+        jumpSound.dispose()
+        doubleJumpSound.dispose()
+        slideSound.dispose()
+        landSound.dispose()
     }
 }

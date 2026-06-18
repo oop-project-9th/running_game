@@ -1,6 +1,7 @@
 package com.oop.game.example
 
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.audio.Sound
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
@@ -8,6 +9,7 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.math.MathUtils
 import com.oop.game.GameWorld
 import com.oop.game.InputHandler
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -58,6 +60,15 @@ class ExampleWorld(
         var isDead: Boolean = false
     )
 
+    private data class RewindSnapshot(
+        var age: Float,
+        val playerX: Float,
+        val playerY: Float,
+        val hp: Float,
+        val offsetX: Float,
+        val offsetY: Float
+    )
+
     private val groundY = 200f
     private val coinSize = 24f
 
@@ -92,6 +103,7 @@ class ExampleWorld(
     private val obstacles = mutableListOf<Obstacle>()
     private val coinPickups = mutableListOf<CoinPickup>()
     private val stageGimmicks = mutableListOf<StageGimmick>()
+    private val rewindSnapshots = mutableListOf<RewindSnapshot>()
     private var patternTimer = 0f
     private var coins = 0
     private var lastGemReward = 0
@@ -105,9 +117,14 @@ class ExampleWorld(
     private var emergencyPotionUsed = false
     private var nearMissRouletteCount = 0
     private var activeCooldownTimer = 0f
+    private var coinSoundCooldown = 0f
     private var shieldTimer = 0f
     private var slowTimer = 0f
+    private var boostTimer = 0f
+    private var phaseTimer = 0f
     private var overdriveTimer = 0f
+    private var goldenOrbitCharge = 0
+    private var immortalShieldUsed = false
     private val bossMaxHp = 560f
     private var bossHp = bossMaxHp
     private var bossAttackTimer = 0f
@@ -142,6 +159,12 @@ class ExampleWorld(
     private val mudTexture = Texture(Gdx.files.internal("gimmick_mud.png"))
     private val spikesTexture = Texture(Gdx.files.internal("gimmick_spikes.png"))
     private val windTexture = Texture(Gdx.files.internal("gimmick_wind.png"))
+
+    private val coinSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_coin.wav"))
+    private val nearMissSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_near_miss.wav"))
+    private val hurtSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_hurt.wav"))
+    private val shopSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_shop.wav"))
+    private val activeSound: Sound = Gdx.audio.newSound(Gdx.files.internal("sfx_active.wav"))
 
     init {
         add(player)
@@ -180,9 +203,14 @@ class ExampleWorld(
         coins = 0
         lastGemReward = 0
         activeCooldownTimer = 0f
+        coinSoundCooldown = 0f
         shieldTimer = 0f
         slowTimer = 0f
+        boostTimer = 0f
+        phaseTimer = 0f
         overdriveTimer = 0f
+        goldenOrbitCharge = 0
+        immortalShieldUsed = false
         bossHp = bossMaxHp
         bossAttackTimer = 0f
         bossAttackIndex = 0
@@ -190,6 +218,7 @@ class ExampleWorld(
         obstacles.clear()
         coinPickups.clear()
         stageGimmicks.clear()
+        rewindSnapshots.clear()
         patternTimer = 0f
         runTimer = 0f
         coinStreak = 0
@@ -231,6 +260,7 @@ class ExampleWorld(
 
         val activeStage = stageManager.currentStage
         updateAllObjects(delta)
+        updateRewindSnapshots(delta)
         updateObstacles(delta, activeStage)
         updateCoinPickups(delta, activeStage)
         updateStageGimmicks(delta, activeStage)
@@ -240,7 +270,8 @@ class ExampleWorld(
             delta = delta,
             baseScoreMultiplier = inventory.baseScoreMultiplier() *
                     inventory.lowHpRewardMultiplier(hp / maxHp) *
-                    feverScoreMultiplier()
+                    feverScoreMultiplier() *
+                    boostScoreMultiplier()
         )
         drainHp(delta)
 
@@ -260,6 +291,7 @@ class ExampleWorld(
     private fun openShop() {
         val shopDepth = stageManager.currentShopDepth()
         stageManager.consumeShopGate()
+        val curseMessage = applyCurseResolution(inventory.completeShopCurse(), showMessage = false)
         inventory.resetStage()
         obstacles.clear()
         coinPickups.clear()
@@ -289,6 +321,7 @@ class ExampleWorld(
         state = GameState.SHOP
 
         val rewards = mutableListOf("스테이지 클리어")
+        if (curseMessage.isNotBlank()) rewards.add(curseMessage)
         if (heal > 0) rewards.add("체력 +$heal")
         if (interest > 0) rewards.add("이자 +$interest 코인")
         if (heal > 0) {
@@ -323,7 +356,7 @@ class ExampleWorld(
             buySelectedItem()
         }
 
-        if (InputHandler.isKeyJustPressed(InputHandler.SPACE)) {
+        if (InputHandler.isKeyJustPressed(InputHandler.S)) {
             closeShop("상점 스킵")
         }
     }
@@ -331,7 +364,7 @@ class ExampleWorld(
     private fun buySelectedItem() {
         val offer = shopSystem.selectedOffer()
         if (offer == null) {
-            closeShop("구매할 수 있는 아이템이 없습니다")
+            showFeedback("구매할 수 있는 아이템이 없습니다. S로 나가기")
             return
         }
 
@@ -341,15 +374,45 @@ class ExampleWorld(
         }
 
         if (!inventory.addItem(offer.definition)) {
-            showFeedback("${offer.definition.name}은 이미 최대 중첩")
+            val reason = if (offer.definition.kind == ItemKind.CURSE_CONTRACT && inventory.activeCurse() != null) {
+                "진행 중인 저주 계약이 있어"
+            } else {
+                "${offer.definition.name}은 이미 최대 중첩"
+            }
+            showFeedback(reason)
             shopSystem.reroll(inventory, inventory.shopDiscountRate(), consumeReroll = false)
             return
         }
 
         coins -= offer.price
+        shopSound.play(0.45f)
         shopSystem.consumeLockIf(offer.definition)
+        val purchaseEffects = mutableListOf(inventory.purchaseSummary(offer.definition))
+        val itemEffectMessage = applyItemPurchaseEffect(offer.definition)
+        if (itemEffectMessage.isNotBlank()) {
+            purchaseEffects.add(itemEffectMessage)
+        }
+        val evolvedItems = inventory.checkEvolutions()
+        if (evolvedItems.isNotEmpty()) {
+            purchaseEffects.add("진화: ${evolvedItems.joinToString("/") { it.name }}")
+        }
         syncPlayerItemEffects()
-        closeShop("구매: ${offer.definition.name} - ${offer.definition.description}")
+        shopSystem.reroll(inventory, inventory.shopDiscountRate(), consumeReroll = false)
+        showFeedback(purchaseEffects.joinToString(" / "))
+    }
+
+    private fun applyItemPurchaseEffect(definition: ItemDefinition): String {
+        if (definition.kind == ItemKind.EQUIPMENT) {
+            activeCooldownTimer = 0f
+        }
+
+        return when (definition.effect) {
+            ItemEffect.BLOOD_CONTRACT -> {
+                hp = (hp - 80f).coerceAtLeast(1f)
+                "피의 계약 체력 -80"
+            }
+            else -> ""
+        }
     }
 
     private fun rerollShop() {
@@ -360,6 +423,7 @@ class ExampleWorld(
         }
 
         coins -= cost
+        shopSound.play(0.32f)
         shopSystem.reroll(inventory, inventory.shopDiscountRate())
         showFeedback("상점 새로고침")
     }
@@ -580,16 +644,17 @@ class ExampleWorld(
             return ""
         }
 
-        bossHp = (bossHp - amount).coerceAtLeast(0f)
+        val finalAmount = amount * inventory.curseBossDamageMultiplier()
+        bossHp = (bossHp - finalAmount).coerceAtLeast(0f)
         if (bossHp > 0f) {
-            return "보스 피해 ${amount.roundToInt()}"
+            return "보스 피해 ${finalAmount.roundToInt()}"
         }
 
         bossDefeated = true
-        coins += 120
+        coins += 45
         scoreSystem.addBonusScore(1500)
         addFeverGauge(35f)
-        return "보스 격파! +120코인 / 점수 +1500"
+        return "보스 격파! +45코인 / 점수 +1500"
     }
 
     private fun isCoinInsideMagnetRange(coin: CoinPickup, magnetRadius: Float): Boolean {
@@ -636,22 +701,53 @@ class ExampleWorld(
     private fun collectCoin(coin: CoinPickup) {
         val baseGain = inventory.coinPickupGain(
             baseCoins = coin.value,
-            hpRatio = hp / maxHp,
-            airborne = player.isAirborne()
+            hpRatio = hp / maxHp
         )
-        val gained = (baseGain * feverRewardMultiplier()).roundToInt().coerceAtLeast(1)
+        val gained = (baseGain * feverRewardMultiplier() * inventory.curseCoinMultiplier()).roundToInt().coerceAtLeast(1)
         val streakMessage = updateCoinStreak()
         val slotMessage = triggerLuckySlot()
         coins += gained
         coin.isDead = true
         addFeverGauge(2f)
+        val orbitMessage = chargeGoldenOrbit(gained)
 
         val parts = mutableListOf<String>()
         if (gained >= 3) parts.add("맵 코인 +$gained")
         if (streakMessage.isNotBlank()) parts.add(streakMessage)
         if (slotMessage.isNotBlank()) parts.add(slotMessage)
+        if (orbitMessage.isNotBlank()) parts.add(orbitMessage)
+        playCoinSound()
         if (parts.isNotEmpty()) {
             showFeedback(parts.joinToString(" / "))
+        }
+    }
+
+    private fun playCoinSound() {
+        if (coinSoundCooldown > 0f) {
+            return
+        }
+
+        coinSound.play(0.35f)
+        coinSoundCooldown = 0.055f
+    }
+
+    private fun chargeGoldenOrbit(amount: Int): String {
+        if (!inventory.hasEvolution("golden_orbit")) {
+            return ""
+        }
+
+        goldenOrbitCharge += amount
+        if (goldenOrbitCharge < 12) {
+            return ""
+        }
+
+        goldenOrbitCharge -= 12
+        return if (breakNearestObstacle(power = 36f)) {
+            scoreSystem.addBonusScore(90)
+            "황금 궤도 발사!"
+        } else {
+            scoreSystem.addBonusScore(35)
+            "황금 궤도 충전 완료"
         }
     }
 
@@ -667,7 +763,7 @@ class ExampleWorld(
             return "코인연쇄 ${coinStreak}"
         }
 
-        val bonus = 8 + stageManager.currentStage.index * 2
+        val bonus = ((2 + stageManager.currentStage.index) * inventory.curseCoinMultiplier()).roundToInt()
         coins += bonus
         scoreSystem.addBonusScore(bonus * 8)
         addFeverGauge(10f)
@@ -686,12 +782,14 @@ class ExampleWorld(
 
         return when (MathUtils.random(0, 99)) {
             in 0..54 -> {
-                coins += 16
-                "슬롯 잭팟 +16"
+                val reward = (8 * inventory.curseCoinMultiplier()).roundToInt()
+                coins += reward
+                "슬롯 잭팟 +$reward"
             }
             in 55..84 -> {
-                coins += 6
-                "슬롯 당첨 +6"
+                val reward = (3 * inventory.curseCoinMultiplier()).roundToInt()
+                coins += reward
+                "슬롯 당첨 +$reward"
             }
             else -> {
                 val loss = min(5, coins)
@@ -747,10 +845,10 @@ class ExampleWorld(
 
         gimmick.triggered = true
         player.launchUp(1480f)
-        coins += 3
+        coins += 1
         scoreSystem.addBonusScore(35)
         addFeverGauge(8f)
-        showFeedback("스프링 점프! 코인 +3")
+        showFeedback("스프링 점프! 코인 +1")
     }
 
     private fun handleBoostPad(gimmick: StageGimmick) {
@@ -759,10 +857,11 @@ class ExampleWorld(
         }
 
         gimmick.triggered = true
+        val removed = performTurboBoost(distance = 180f, duration = 0.55f)
         activeCooldownTimer = (activeCooldownTimer - 1.2f).coerceAtLeast(0f)
         scoreSystem.addBonusScore(70)
         addFeverGauge(10f)
-        showFeedback("부스트 발판! 점수 +70 / 대기시간 감소")
+        showFeedback("부스트 발판! 순간 질주${removedText(removed)}")
     }
 
     private fun handleMud(gimmick: StageGimmick, delta: Float) {
@@ -805,9 +904,15 @@ class ExampleWorld(
         }
 
         gimmick.triggered = true
-        player.launchUp(1180f)
+        val multiplier = inventory.windColumnMultiplier()
+        player.launchUp(1180f * multiplier)
         addFeverGauge(7f)
-        showFeedback("바람기둥 상승!")
+        val message = if (multiplier > 1f) {
+            "바람 돛 상승! 높이 x${String.format("%.1f", multiplier)}"
+        } else {
+            "바람기둥 상승!"
+        }
+        showFeedback(message)
     }
 
     private fun rewardGimmickPass(gimmick: StageGimmick) {
@@ -820,7 +925,7 @@ class ExampleWorld(
         when (gimmick.type) {
             GimmickType.PIT -> {
                 if (!gimmick.triggered) {
-                    val reward = 5 + stageManager.currentStage.index
+                    val reward = 2 + stageManager.currentStage.index / 2
                     coins += reward
                     scoreSystem.addBonusScore(reward * 10)
                     addFeverGauge(9f)
@@ -878,7 +983,7 @@ class ExampleWorld(
     }
 
     private fun drainHp(delta: Float) {
-        hp -= 1f * delta
+        hp -= 1f * inventory.hpDrainMultiplier(scoreSystem.combo) * delta
         triggerEmergencyPotionIfNeeded()
 
         if (hp <= 0f) {
@@ -914,13 +1019,6 @@ class ExampleWorld(
                 continue
             }
 
-            if (!obstacle.slideTrickChecked &&
-                inventory.hasSlideTrickSystem() &&
-                isPlayerSlidingUnderObstacle(obstacle)
-            ) {
-                rewardSlideTrick(obstacle)
-            }
-
             if (!obstacle.nearMissChecked && isPlayerNearObstacle(obstacle)) {
                 rewardNearMiss(obstacle)
             }
@@ -931,26 +1029,31 @@ class ExampleWorld(
 
     private fun rewardNearMiss(obstacle: Obstacle) {
         val overdriveMultiplier = if (overdriveTimer > 0f) 2f else 1f
-        val rewardMultiplier = overdriveMultiplier * feverRewardMultiplier()
+        val scoreRewardMultiplier = overdriveMultiplier * feverScoreMultiplier() * inventory.curseNearMissScoreMultiplier()
+        val coinRewardMultiplier = overdriveMultiplier * feverRewardMultiplier() * inventory.curseCoinMultiplier()
         val lowHpMultiplier = inventory.lowHpRewardMultiplier(hp / maxHp)
         val bonus = scoreSystem.rewardNearMiss(
-            scoreBonusMultiplier = inventory.nearMissScoreMultiplier() * rewardMultiplier * lowHpMultiplier,
+            scoreBonusMultiplier = inventory.nearMissScoreMultiplier() * scoreRewardMultiplier * lowHpMultiplier,
             multiplierGrowthBonus = inventory.multiplierGrowthBonus(),
             maxMultiplier = inventory.maxMultiplier()
         )
-        val coinGain = (inventory.nearMissCoinGain(4 + stageManager.currentStage.index) * rewardMultiplier * lowHpMultiplier)
+        val coinGain = (inventory.nearMissCoinGain(1 + stageManager.currentStage.index / 2) * coinRewardMultiplier * lowHpMultiplier)
             .roundToInt()
             .coerceAtLeast(1)
         val comboCoinGain = inventory.comboCoinReward(scoreSystem.combo)
         val cooldownRefund = inventory.nearMissCooldownRefund()
+        val timeThiefRefund = triggerTimeThief()
+        val overdriveMessage = triggerOverdriveSystem()
         val heal = inventory.comboHeal(scoreSystem.combo)
         val bountyMessage = rewardBountyIfAvailable(obstacle, "현상금")
         val rouletteMessage = triggerNearMissRoulette()
         val bossMessage = damageBoss(18f + scoreSystem.combo.coerceAtMost(40) * 0.45f)
 
         coins += coinGain + comboCoinGain
-        if (cooldownRefund > 0f && activeCooldownTimer > 0f) {
-            activeCooldownTimer = (activeCooldownTimer - cooldownRefund).coerceAtLeast(0f)
+        nearMissSound.play(0.35f)
+        val totalCooldownRefund = cooldownRefund + timeThiefRefund
+        if (totalCooldownRefund > 0f && activeCooldownTimer > 0f) {
+            activeCooldownTimer = (activeCooldownTimer - totalCooldownRefund).coerceAtLeast(0f)
         }
         if (heal > 0) {
             healPlayer(heal)
@@ -961,12 +1064,31 @@ class ExampleWorld(
 
         val parts = mutableListOf("니어미스 점수 +$bonus", "코인 +${coinGain + comboCoinGain}")
         if (comboCoinGain > 0) parts.add("콤보금고 +$comboCoinGain")
-        if (cooldownRefund > 0f) parts.add("대기-${cooldownRefund}초")
+        if (totalCooldownRefund > 0f) parts.add("장비 대기-${String.format("%.1f", totalCooldownRefund)}초")
+        if (overdriveMessage.isNotBlank()) parts.add(overdriveMessage)
         if (heal > 0) parts.add("체력 +$heal")
         if (bountyMessage.isNotBlank()) parts.add(bountyMessage)
         if (rouletteMessage.isNotBlank()) parts.add(rouletteMessage)
         if (bossMessage.isNotBlank()) parts.add(bossMessage)
         showFeedback(parts.joinToString(" / "))
+    }
+
+    private fun triggerTimeThief(): Float {
+        val equipment = inventory.currentEquipment() ?: return 0f
+        if (!inventory.hasEvolution("time_thief") || equipment.definition.effect != ItemEffect.TIME_SLOW) {
+            return 0f
+        }
+
+        return 1.1f
+    }
+
+    private fun triggerOverdriveSystem(): String {
+        if (!inventory.hasNearMissOverdrive() || scoreSystem.combo <= 0 || scoreSystem.combo % 8 != 0) {
+            return ""
+        }
+
+        overdriveTimer = maxOf(overdriveTimer, 5f)
+        return "오버드라이브 발동"
     }
 
     private fun isPlayerSlidingUnderObstacle(obstacle: Obstacle): Boolean {
@@ -1001,10 +1123,15 @@ class ExampleWorld(
             return ""
         }
 
-        val coinGain = 10 + stageManager.currentStage.index * 3
-        val scoreGain = 45 + stageManager.currentStage.index * 15
+        val bountyMultiplier = if (inventory.hasEvolution("bounty_hunter")) 1.65f else 1f
+        val coinGain = ((4 + stageManager.currentStage.index) * bountyMultiplier * inventory.curseCoinMultiplier())
+            .roundToInt()
+        val scoreGain = ((45 + stageManager.currentStage.index * 15) * bountyMultiplier).roundToInt()
         coins += coinGain
         scoreSystem.addBonusScore(scoreGain)
+        if (inventory.hasEvolution("bounty_hunter")) {
+            damageBoss(18f)
+        }
         obstacle.bounty = false
         addFeverGauge(14f)
         return "$label +$coinGain 코인"
@@ -1022,8 +1149,9 @@ class ExampleWorld(
 
         return when (MathUtils.random(0, 3)) {
             0 -> {
-                coins += 18
-                "룰렛 +18 코인"
+                val reward = (8 * inventory.curseCoinMultiplier()).roundToInt()
+                coins += reward
+                "룰렛 +$reward 코인"
             }
             1 -> {
                 healPlayer(28)
@@ -1041,6 +1169,11 @@ class ExampleWorld(
     }
 
     private fun damagePlayer(damage: Float) {
+        if (phaseTimer > 0f) {
+            showFeedback("위상 망토: 피격 통과")
+            return
+        }
+
         if (shieldTimer > 0f) {
             shieldTimer = 0f
             showFeedback("보호막으로 피격 무시")
@@ -1054,9 +1187,20 @@ class ExampleWorld(
             return
         }
 
-        val adjustedDamage = inventory.adjustedDamage(damage)
+        val adjustedDamage = inventory.adjustedDamage(damage) * inventory.curseDamageMultiplier()
+        if (hp - adjustedDamage <= 0f && inventory.hasEvolution("immortal_shield") && !immortalShieldUsed) {
+            immortalShieldUsed = true
+            hp = 1f
+            shieldTimer = maxOf(shieldTimer, 3f)
+            showFeedback("불사 보호막 발동! 체력 1로 생존")
+            return
+        }
+
         hp -= adjustedDamage
+        hurtSound.play(0.48f)
+        player.playHurtMotion()
         triggerEmergencyPotionIfNeeded()
+        val cursePenalty = applyCurseResolution(inventory.curseHitPenalty(), showMessage = false)
 
         val preservedCombo = inventory.comboToPreserve(scoreSystem.combo)
         scoreSystem.resetCombo(
@@ -1065,11 +1209,16 @@ class ExampleWorld(
             maxMultiplier = inventory.maxMultiplier()
         )
 
+        val hitParts = mutableListOf<String>()
         if (preservedCombo > 0) {
-            showFeedback("피격! 콤보 $preservedCombo 보존")
+            hitParts.add("피격! 콤보 $preservedCombo 보존")
         } else {
-            showFeedback("피격! 배율 초기화")
+            hitParts.add("피격! 배율 초기화")
         }
+        if (cursePenalty.isNotBlank()) {
+            hitParts.add(cursePenalty)
+        }
+        showFeedback(hitParts.joinToString(" / "))
 
         if (hp <= 0f) {
             hp = 0f
@@ -1083,14 +1232,18 @@ class ExampleWorld(
 
     private fun updateActiveTimers(delta: Float) {
         activeCooldownTimer = (activeCooldownTimer - delta).coerceAtLeast(0f)
+        coinSoundCooldown = (coinSoundCooldown - delta).coerceAtLeast(0f)
         shieldTimer = (shieldTimer - delta).coerceAtLeast(0f)
         slowTimer = (slowTimer - delta).coerceAtLeast(0f)
+        boostTimer = (boostTimer - delta).coerceAtLeast(0f)
+        phaseTimer = (phaseTimer - delta).coerceAtLeast(0f)
         overdriveTimer = (overdriveTimer - delta).coerceAtLeast(0f)
         feverTimer = (feverTimer - delta).coerceAtLeast(0f)
         coinStreakTimer = (coinStreakTimer - delta).coerceAtLeast(0f)
         if (coinStreakTimer <= 0f) {
             coinStreak = 0
         }
+        applyCurseResolution(inventory.updateCurse(delta))
     }
 
     private fun handleActiveInput() {
@@ -1098,66 +1251,201 @@ class ExampleWorld(
             return
         }
 
+        val equipment = inventory.currentEquipment()
+        if (equipment == null) {
+            showFeedback("장착한 장비가 없어")
+            return
+        }
+
+        if (inventory.isEquipmentSilenced()) {
+            showFeedback("침묵 계약 중: 장비 사용 불가")
+            return
+        }
+
         if (activeCooldownTimer > 0f) {
-            showFeedback("액티브 대기 ${activeCooldownTimer.toInt() + 1}초")
+            showFeedback("${equipment.definition.name} 대기 ${activeCooldownTimer.toInt() + 1}초")
             return
         }
 
-        if (inventory.hasQuickDrop() && player.isAirborne()) {
-            player.forceLanding()
-            activeCooldownTimer = 2.2f
-            showFeedback("중력 앵커: 즉시 착지")
-            return
-        }
-
-        val usedMessages = mutableListOf<String>()
-
-        if (inventory.hasActiveShield()) {
-            shieldTimer = 3f
-            usedMessages.add("보호막")
-        }
-
-        if (inventory.hasTimeSlow()) {
-            slowTimer = 3.2f
-            usedMessages.add("시간감속")
-        }
-
-        if (inventory.hasObstacleBreak() && breakNearestObstacle()) {
-            usedMessages.add("장애물제거")
-        }
-
-        val dashDistance = inventory.dashDistance()
-        if (dashDistance > 0f) {
-            player.dashForward(dashDistance)
-            usedMessages.add("대시")
-        }
-
-        if (inventory.hasNearMissOverdrive()) {
-            overdriveTimer = 5f
-            usedMessages.add("오버드라이브")
-        }
-
-        if (usedMessages.isEmpty()) {
-            if (inventory.hasQuickDrop()) {
-                showFeedback("중력 앵커는 공중에서 X")
-            } else {
-                showFeedback("사용 가능한 액티브 아이템 없음")
+        val message = when (equipment.definition.effect) {
+            ItemEffect.QUICK_DROP -> {
+                if (!player.isAirborne()) {
+                    showFeedback("중력 앵커는 공중에서 X")
+                    return
+                }
+                player.forceLanding()
+                val removed = triggerStormLanding()
+                if (removed > 0) {
+                    "중력 앵커: 즉시 착지 / 폭풍 착지 $removed 개 제거"
+                } else {
+                    "중력 앵커: 즉시 착지"
+                }
             }
-            return
+            ItemEffect.ACTIVE_BOOST -> {
+                val distance = 320f + (equipment.level - 1) * 80f
+                val removed = performTurboBoost(
+                    distance = distance,
+                    duration = inventory.equipmentDuration(1.05f)
+                )
+                "터보 부스터: 순간 질주${removedText(removed)}"
+            }
+            ItemEffect.TIME_SLOW -> {
+                slowTimer = maxOf(slowTimer, inventory.equipmentDuration(5f))
+                "시간 정지 시계: 감속 ${slowTimer.toInt() + 1}초"
+            }
+            ItemEffect.PHASE_SHIFT -> {
+                phaseTimer = maxOf(phaseTimer, inventory.equipmentDuration(2.2f))
+                "위상 망토: ${phaseTimer.toInt() + 1}초 동안 충돌 통과"
+            }
+            ItemEffect.ACTIVE_SHIELD -> {
+                shieldTimer = maxOf(shieldTimer, inventory.equipmentDuration(3f))
+                "순간 보호막: 피격 1회 무시"
+            }
+            ItemEffect.OBSTACLE_BREAK -> {
+                if (breakNearestObstacle(power = 72f)) {
+                    "상자 폭죽: 장애물 제거"
+                } else {
+                    val bossMessage = damageBoss(72f)
+                    if (bossMessage.isNotBlank()) "상자 폭죽: $bossMessage" else "제거할 장애물이 없어"
+                }
+            }
+            ItemEffect.HOOK_STAR -> useHookStar()
+            ItemEffect.REWIND_CLOCK -> useRewindClock()
+            else -> {
+                showFeedback("사용 가능한 액티브 아이템 없음")
+                return
+            }
         }
 
-        activeCooldownTimer = 6f
-        showFeedback("액티브 발동: ${usedMessages.joinToString("/")}")
+        activeCooldownTimer = inventory.equipmentCooldown()
+        activeSound.play(0.42f)
+        showFeedback(message)
     }
 
-    private fun breakNearestObstacle(): Boolean {
+    private fun updateRewindSnapshots(delta: Float) {
+        for (snapshot in rewindSnapshots) {
+            snapshot.age += delta
+        }
+        rewindSnapshots.removeIf { it.age > 1.25f }
+        rewindSnapshots.add(
+            RewindSnapshot(
+                age = 0f,
+                playerX = player.x,
+                playerY = player.y,
+                hp = hp,
+                offsetX = offsetX,
+                offsetY = offsetY
+            )
+        )
+    }
+
+    private fun useHookStar(): String {
+        val target = coinPickups
+            .filter { !it.isDead && it.x > player.x && it.x < player.x + 560f }
+            .minByOrNull { abs(it.x - player.x) + abs(it.y - player.y) }
+
+        if (target == null) {
+            player.dashForward(150f)
+            player.launchUp(760f)
+            return "갈고리 별: 전방 도약"
+        }
+
+        val dashDistance = (target.x - player.x - 52f).coerceIn(80f, 280f)
+        val liftPower = (target.y - player.y + 620f).coerceIn(620f, 1420f)
+        player.dashForward(dashDistance)
+        player.launchUp(liftPower)
+        addFeverGauge(8f)
+        return "갈고리 별: 코인 루트로 이동"
+    }
+
+    private fun useRewindClock(): String {
+        val snapshot = rewindSnapshots
+            .filter { it.age >= 0.85f }
+            .minByOrNull { abs(it.age - 1f) }
+            ?: rewindSnapshots.maxByOrNull { it.age }
+            ?: return "되감기 실패: 기록 없음"
+
+        player.moveTo(snapshot.playerX, snapshot.playerY)
+        hp = maxOf(hp, snapshot.hp).coerceAtMost(maxHp)
+        offsetX = snapshot.offsetX.coerceAtLeast(0f)
+        offsetY = snapshot.offsetY.coerceIn(0f, worldHeight - screenHeight)
+        shieldTimer = maxOf(shieldTimer, 0.6f)
+        rewindSnapshots.clear()
+        return "되감기 시계: 1초 전으로 복귀"
+    }
+
+    private fun performTurboBoost(distance: Float, duration: Float): Int {
+        val fromX = player.x
+        val toX = fromX + distance
+        var removed = 0
+
+        for (obstacle in obstacles) {
+            if (obstacle.isDead) {
+                continue
+            }
+
+            val obstacleCenter = obstacle.x + obstacle.width / 2f
+            if (obstacleCenter in fromX..(toX + 90f)) {
+                obstacle.isDead = true
+                removed++
+                rewardBountyIfAvailable(obstacle, "부스터 돌파")
+            }
+        }
+
+        if (removed > 0) {
+            scoreSystem.addBonusScore(removed * 75)
+            damageBoss(removed * 32f)
+        }
+
+        player.dashForward(distance)
+        offsetX += distance
+        boostTimer = maxOf(boostTimer, duration)
+        addFeverGauge(16f)
+        return removed
+    }
+
+    private fun removedText(removed: Int): String {
+        return if (removed > 0) " / 장애물 ${removed}개 돌파" else ""
+    }
+
+    private fun triggerStormLanding(): Int {
+        if (!inventory.hasEvolution("storm_landing")) {
+            return 0
+        }
+
+        var removed = 0
+        for (obstacle in obstacles) {
+            if (obstacle.isDead || obstacle.y > groundY + 36f) {
+                continue
+            }
+            val distance = obstacle.x - player.x
+            if (distance < -80f || distance > 280f) {
+                continue
+            }
+
+            obstacle.isDead = true
+            removed++
+            if (removed >= 2) {
+                break
+            }
+        }
+
+        if (removed > 0) {
+            scoreSystem.addBonusScore(removed * 70)
+            damageBoss(removed * 28f)
+        }
+        return removed
+    }
+
+    private fun breakNearestObstacle(power: Float = 60f): Boolean {
         val target = obstacles
             .filter { !it.isDead && it.x + it.width > player.x }
             .minByOrNull { it.x }
 
         if (target != null) {
             rewardBountyIfAvailable(target, "현상금 제거")
-            damageBoss(60f)
+            val bossPower = if (inventory.hasEvolution("bounty_hunter")) power * 1.55f else power
+            damageBoss(bossPower)
             target.isDead = true
         }
         return target != null
@@ -1184,8 +1472,51 @@ class ExampleWorld(
         return if (feverTimer > 0f) 1.7f else 1f
     }
 
+    private fun boostScoreMultiplier(): Float {
+        return if (boostTimer > 0f) 1.35f else 1f
+    }
+
     private fun healPlayer(amount: Int) {
         hp = (hp + amount).coerceAtMost(maxHp)
+    }
+
+    private fun applyCurseResolution(resolution: CurseResolution?, showMessage: Boolean = true): String {
+        if (resolution == null) {
+            return ""
+        }
+
+        val parts = mutableListOf(resolution.message)
+        if (resolution.coinGain > 0) {
+            coins += resolution.coinGain
+        }
+        if (resolution.coinLossRate > 0f) {
+            val loss = (coins * resolution.coinLossRate).roundToInt().coerceIn(0, coins)
+            coins -= loss
+            parts.add("코인 -$loss")
+        }
+        if (resolution.damage > 0f) {
+            hp -= resolution.damage
+            parts.add("체력 -${resolution.damage.toInt()}")
+        }
+        if (resolution.resetCombo) {
+            scoreSystem.resetCombo(
+                preservedCombo = 0,
+                multiplierGrowthBonus = inventory.multiplierGrowthBonus(),
+                maxMultiplier = inventory.maxMultiplier()
+            )
+            parts.add("콤보 초기화")
+        }
+
+        if (hp <= 0f) {
+            hp = 0f
+            finishGame()
+        }
+
+        val message = parts.joinToString(" / ")
+        if (showMessage && message.isNotBlank()) {
+            showFeedback(message)
+        }
+        return message
     }
 
     private fun finishGame() {
@@ -1680,7 +2011,7 @@ class ExampleWorld(
         drawTextOnScreen(
             text = "스테이지 ${stageManager.currentStage.index}: ${stageManager.currentStage.name}",
             x = screenWidth / 2f - 155f,
-            y = hudY,
+            y = hudY - 24f,
             color = Color.WHITE,
             scale = 1f
         )
@@ -1716,12 +2047,34 @@ class ExampleWorld(
             scale = 0.86f
         )
         drawTextOnScreen(
-            text = "액티브 ${inventory.activeAbilitySummary()}   X 대기 ${activeCooldownText()}   ${feverText()}",
+            text = "장비 ${inventory.equipmentSummary()}   X 대기 ${activeCooldownText()}   ${feverText()}",
             x = 10f,
             y = screenHeight - 138f,
             color = if (activeCooldownTimer <= 0f) Color.CYAN else Color.LIGHT_GRAY,
             scale = 0.86f
         )
+        drawTextOnScreen(
+            text = "저주 ${inventory.curseSummary()}",
+            x = 10f,
+            y = screenHeight - 160f,
+            color = if (inventory.activeCurse() == null) Color.LIGHT_GRAY else Color.MAGENTA,
+            scale = 0.82f
+        )
+        drawTextOnScreen(
+            text = "진화 ${inventory.evolutionSummary()}${goldenOrbitText()}",
+            x = 10f,
+            y = screenHeight - 181f,
+            color = Color.YELLOW,
+            scale = 0.82f
+        )
+    }
+
+    private fun goldenOrbitText(): String {
+        if (!inventory.hasEvolution("golden_orbit")) {
+            return ""
+        }
+
+        return "  황금궤도 $goldenOrbitCharge/12"
     }
 
     private fun feverText(): String {
@@ -1737,6 +2090,10 @@ class ExampleWorld(
     }
 
     private fun activeCooldownText(): String {
+        if (inventory.currentEquipment() == null) {
+            return "-"
+        }
+
         return if (activeCooldownTimer <= 0f) {
             "준비됨"
         } else {
@@ -1831,12 +2188,13 @@ class ExampleWorld(
     }
 
     private fun drawShopScreen() {
-        val cardWidth = 310f
-        val cardHeight = 250f
-        val gap = 28f
+        val sidePadding = 40f
+        val gap = 26f
+        val cardWidth = ((screenWidth - sidePadding * 2f - gap * 2f) / 3f).coerceIn(280f, 318f)
+        val cardHeight = 258f
         val totalWidth = cardWidth * 3f + gap * 2f
         val startX = (screenWidth - totalWidth) / 2f
-        val cardY = 172f
+        val cardY = 158f
 
         batch.begin()
         batch.color = Color(0f, 0f, 0f, 0.68f)
@@ -1862,22 +2220,29 @@ class ExampleWorld(
 
         drawTextOnScreen(
             text = "스테이지 상점",
-            x = screenWidth / 2f - 95f,
+            x = screenWidth / 2f - 115f,
             y = screenHeight - 112f,
             color = Color.YELLOW,
             scale = 1.8f
         )
         drawTextOnScreen(
-            text = "←/→ 선택   ENTER 구매   SPACE 스킵   R 새로고침(${shopSystem.rerollCost(inventory.shopDiscountRate())} 코인, ${shopSystem.rerollInfo()})   L 예약",
-            x = screenWidth / 2f - 380f,
+            text = "←/→ 선택   ENTER 구매   S 스킵",
+            x = screenWidth / 2f - 205f,
             y = screenHeight - 145f,
             color = Color.WHITE,
-            scale = 0.9f
+            scale = 0.84f
+        )
+        drawTextOnScreen(
+            text = "R 새로고침(${shopSystem.rerollCost(inventory.shopDiscountRate())} 코인, ${shopSystem.rerollInfo()})   L 예약",
+            x = screenWidth / 2f - 220f,
+            y = screenHeight - 169f,
+            color = Color.LIGHT_GRAY,
+            scale = 0.78f
         )
 
         if (shopSystem.offers.isEmpty()) {
             drawTextOnScreen(
-                text = "구매 가능한 아이템이 없습니다. SPACE로 계속 진행.",
+                text = "구매 가능한 아이템이 없습니다. S로 계속 진행.",
                 x = screenWidth / 2f - 215f,
                 y = screenHeight / 2f,
                 color = Color.WHITE,
@@ -1891,7 +2256,7 @@ class ExampleWorld(
 
         val owned = inventory.ownedItems()
             .joinToString("  ") { (definition, stack) -> "${definition.name}x$stack" }
-        val ownedText = if (owned.isBlank()) "아직 아이템 없음" else owned.take(108)
+        val ownedText = if (owned.isBlank()) "아직 아이템 없음" else limitText(owned, 58)
         drawTextOnScreen(
             text = "보유: $ownedText",
             x = 55f,
@@ -1907,14 +2272,14 @@ class ExampleWorld(
             scale = 0.9f
         )
         drawTextOnScreen(
-            text = "액티브: ${inventory.activeAbilitySummary()}",
+            text = "장비: ${inventory.equipmentSummary()}   저주: ${inventory.curseSummary()}",
             x = 55f,
             y = 52f,
             color = Color.CYAN,
             scale = 0.9f
         )
         drawTextOnScreen(
-            text = "시스템: ${inventory.systemSummary()}",
+            text = limitText("시스템: ${inventory.systemSummary()}   진화: ${inventory.evolutionSummary()}", 62),
             x = 55f,
             y = 28f,
             color = Color.WHITE,
@@ -1924,55 +2289,93 @@ class ExampleWorld(
 
     private fun drawShopOffer(offer: ItemOffer, index: Int, x: Float, y: Float, cardWidth: Float) {
         val definition = offer.definition
-        val lineX = x + 22f
-        var lineY = y + 218f
+        val lineX = x + 20f
+        val contentWidth = cardWidth - 40f
+        var lineY = y + 228f
 
         drawTextOnScreen(
-            text = "${index + 1}. ${definition.name}${if (shopSystem.isLocked(definition)) " [예약]" else ""}",
+            text = limitText(
+                text = "${index + 1}. ${definition.name}${if (shopSystem.isLocked(definition)) " [예약]" else ""}",
+                maxChars = maxCharsForCard(contentWidth, 0.98f)
+            ),
             x = lineX,
             y = lineY,
             color = rarityColor(definition.rarity),
-            scale = 1.08f
-        )
-
-        lineY -= 30f
-        drawTextOnScreen(
-            text = "${definition.rarity.label}   ${offer.price} 코인   중첩 ${inventory.stackOf(definition)}/${inventory.maxStackOf(definition)}",
-            x = lineX,
-            y = lineY,
-            color = Color.WHITE,
-            scale = 0.84f
+            scale = 0.98f
         )
 
         lineY -= 28f
         drawTextOnScreen(
-            text = "태그: ${definition.tags.joinToString("/") { it.label }}",
+            text = "${definition.kind.label} / ${definition.rarity.label}   ${offer.price} 코인",
             x = lineX,
             y = lineY,
-            color = Color.YELLOW,
-            scale = 0.82f
+            color = Color.WHITE,
+            scale = 0.74f
         )
 
-        lineY -= 34f
-        for (line in wrapText(definition.description, 30)) {
+        lineY -= 22f
+        drawTextOnScreen(
+            text = "중첩 ${inventory.stackOf(definition)}/${inventory.maxStackOf(definition)}",
+            x = lineX,
+            y = lineY,
+            color = Color.LIGHT_GRAY,
+            scale = 0.72f
+        )
+
+        lineY -= 24f
+        for (line in wrapText("태그: ${definition.tags.joinToString("/") { it.label }}", maxCharsForCard(contentWidth, 0.72f))) {
+            drawTextOnScreen(
+                text = line,
+                x = lineX,
+                y = lineY,
+                color = Color.YELLOW,
+                scale = 0.72f
+            )
+            lineY -= 20f
+        }
+
+        lineY -= 6f
+        for (line in wrapText(definition.description, maxCharsForCard(contentWidth, 0.72f)).take(4)) {
             drawTextOnScreen(
                 text = line,
                 x = lineX,
                 y = lineY,
                 color = Color.LIGHT_GRAY,
-                scale = 0.82f
+                scale = 0.72f
             )
-            lineY -= 22f
+            lineY -= 19f
+        }
+
+        if (definition.kind == ItemKind.EQUIPMENT) {
+            drawTextOnScreen(
+                text = "X로 사용",
+                x = lineX,
+                y = y + 50f,
+                color = Color.CYAN,
+                scale = 0.72f
+            )
         }
 
         val selectedText = if (shopSystem.selectedIndex == index) "< 선택됨 >" else ""
         drawTextOnScreen(
             text = selectedText,
-            x = x + cardWidth / 2f - 65f,
+            x = x + cardWidth / 2f - 58f,
             y = y + 28f,
             color = Color.YELLOW,
-            scale = 0.85f
+            scale = 0.82f
         )
+    }
+
+    private fun maxCharsForCard(width: Float, scale: Float): Int {
+        return (width / (15.5f * scale)).toInt().coerceIn(10, 18)
+    }
+
+    private fun limitText(text: String, maxChars: Int): String {
+        if (text.length <= maxChars) {
+            return text
+        }
+
+        return text.take((maxChars - 1).coerceAtLeast(1)) + "…"
     }
 
     private fun rarityColor(rarity: ItemRarity): Color {
@@ -1986,14 +2389,17 @@ class ExampleWorld(
     private fun wrapText(text: String, maxChars: Int): List<String> {
         val lines = mutableListOf<String>()
         var current = ""
+        val safeMax = maxChars.coerceAtLeast(6)
 
         for (word in text.split(" ")) {
-            val next = if (current.isEmpty()) word else "$current $word"
-            if (next.length > maxChars && current.isNotEmpty()) {
-                lines.add(current)
-                current = word
-            } else {
-                current = next
+            for (chunk in word.chunked(safeMax)) {
+                val next = if (current.isEmpty()) chunk else "$current $chunk"
+                if (next.length > safeMax && current.isNotEmpty()) {
+                    lines.add(current)
+                    current = chunk
+                } else {
+                    current = next
+                }
             }
         }
 
@@ -2085,5 +2491,10 @@ class ExampleWorld(
         mudTexture.dispose()
         spikesTexture.dispose()
         windTexture.dispose()
+        coinSound.dispose()
+        nearMissSound.dispose()
+        hurtSound.dispose()
+        shopSound.dispose()
+        activeSound.dispose()
     }
 }

@@ -13,9 +13,17 @@ enum class ItemTag(val label: String) {
 }
 
 enum class ItemRarity(val label: String, val basePrice: Int) {
-    COMMON("일반", 20),
-    RARE("희귀", 35),
-    EPIC("에픽", 55)
+    COMMON("일반", 35),
+    RARE("희귀", 60),
+    EPIC("에픽", 95)
+}
+
+enum class ItemKind(val label: String) {
+    PASSIVE("패시브"),
+    EQUIPMENT("장비"),
+    SYSTEM("패시브"),
+    CURSE_CONTRACT("저주"),
+    EVOLUTION("진화")
 }
 
 enum class ItemEffect {
@@ -32,9 +40,13 @@ enum class ItemEffect {
     FIVE_COMBO_HEAL,
     EXTRA_JUMP,
     QUICK_DROP,
+    ACTIVE_BOOST,
     TIME_SLOW,
+    PHASE_SHIFT,
     ACTIVE_SHIELD,
     OBSTACLE_BREAK,
+    HOOK_STAR,
+    REWIND_CLOCK,
     AIR_DASH,
     NEAR_MISS_OVERDRIVE,
     COIN_PICKUP_VALUE,
@@ -42,10 +54,10 @@ enum class ItemEffect {
     ACTIVE_COOLDOWN_REFUND,
     COMBO_COIN,
     LOW_HP_REWARD,
-    AIR_COIN_BONUS,
+    WIND_RIDER,
     FREE_REROLL,
     COIN_STREAK_SYSTEM,
-    SLIDE_TRICK_SYSTEM,
+    COMBO_DRAIN_GUARD,
     BOUNTY_SYSTEM,
     FEVER_SYSTEM,
     EMERGENCY_POTION_SYSTEM,
@@ -53,7 +65,16 @@ enum class ItemEffect {
     SHOP_LOCK_SYSTEM,
     COIN_SHIELD_SYSTEM,
     COIN_INTEREST_SYSTEM,
-    NEAR_MISS_ROULETTE_SYSTEM
+    NEAR_MISS_ROULETTE_SYSTEM,
+    GLASS_HEART_CONTRACT,
+    GREED_CONTRACT,
+    SILENCE_CONTRACT,
+    BLOOD_CONTRACT,
+    GOLDEN_ORBIT_EVOLUTION,
+    STORM_LANDING_EVOLUTION,
+    BOUNTY_HUNTER_EVOLUTION,
+    TIME_THIEF_EVOLUTION,
+    IMMORTAL_SHIELD_EVOLUTION
 }
 
 data class ItemDefinition(
@@ -64,7 +85,35 @@ data class ItemDefinition(
     val effect: ItemEffect,
     val power: Float,
     val defaultUnlocked: Boolean,
-    val description: String
+    val description: String,
+    val kind: ItemKind = ItemKind.PASSIVE
+)
+
+data class EquipmentState(
+    val definition: ItemDefinition,
+    val level: Int
+)
+
+data class CurseState(
+    val definition: ItemDefinition,
+    var timeLeft: Float,
+    val expiresAtShop: Boolean
+)
+
+data class CurseResolution(
+    val message: String,
+    val coinGain: Int = 0,
+    val coinLossRate: Float = 0f,
+    val damage: Float = 0f,
+    val resetCombo: Boolean = false,
+    val rareShopBoost: Int = 0
+)
+
+data class EvolutionRule(
+    val resultId: String,
+    val requiredIds: Set<String>,
+    val requiredTag: ItemTag? = null,
+    val requiredTagCount: Int = 0
 )
 
 object ItemCatalog {
@@ -191,13 +240,13 @@ object ItemCatalog {
         ),
         ItemDefinition(
             id = "air_wallet",
-            name = "공중 지갑",
+            name = "바람 돛",
             rarity = ItemRarity.COMMON,
-            tags = setOf(ItemTag.AGILITY, ItemTag.GOLD),
-            effect = ItemEffect.AIR_COIN_BONUS,
-            power = 1f,
+            tags = setOf(ItemTag.AGILITY),
+            effect = ItemEffect.WIND_RIDER,
+            power = 0.28f,
             defaultUnlocked = true,
-            description = "공중에서 먹은 맵 코인마다 코인 +1."
+            description = "바람기둥을 타면 더 높게 상승."
         ),
         ItemDefinition(
             id = "combo_safe",
@@ -237,17 +286,19 @@ object ItemCatalog {
             effect = ItemEffect.COIN_STREAK_SYSTEM,
             power = 1f,
             defaultUnlocked = true,
-            description = "맵 코인을 빠르게 이어 먹으면 코인 콤보가 생김."
+            description = "맵 코인을 빠르게 이어 먹으면 코인 콤보가 생김.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "slide_scanner",
             name = "슬라이드 스캐너",
             rarity = ItemRarity.RARE,
-            tags = setOf(ItemTag.AGILITY, ItemTag.RISK),
-            effect = ItemEffect.SLIDE_TRICK_SYSTEM,
+            tags = setOf(ItemTag.COMBO, ItemTag.SHIELD),
+            effect = ItemEffect.COMBO_DRAIN_GUARD,
             power = 1f,
             defaultUnlocked = true,
-            description = "슬라이드로 공중 장애물 밑을 통과하면 보상."
+            description = "콤보가 높을수록 체력 감소 속도 완화.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "bounty_stamp",
@@ -257,7 +308,8 @@ object ItemCatalog {
             effect = ItemEffect.BOUNTY_SYSTEM,
             power = 1f,
             defaultUnlocked = true,
-            description = "일부 장애물에 현상금 표식이 생김."
+            description = "일부 장애물에 현상금 표식이 생김.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "fever_clock",
@@ -267,7 +319,8 @@ object ItemCatalog {
             effect = ItemEffect.FEVER_SYSTEM,
             power = 1f,
             defaultUnlocked = true,
-            description = "니어미스와 코인으로 피버 게이지를 충전."
+            description = "니어미스와 코인으로 피버 게이지를 충전.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "potion_belt",
@@ -277,7 +330,8 @@ object ItemCatalog {
             effect = ItemEffect.EMERGENCY_POTION_SYSTEM,
             power = 1f,
             defaultUnlocked = true,
-            description = "체력이 낮아지면 한 번 자동 회복."
+            description = "체력이 낮아지면 한 번 자동 회복.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "glass_crown",
@@ -367,7 +421,8 @@ object ItemCatalog {
             effect = ItemEffect.LUCKY_SLOT_SYSTEM,
             power = 1f,
             defaultUnlocked = false,
-            description = "일정 횟수 코인을 먹을 때마다 무작위 정산."
+            description = "일정 횟수 코인을 먹을 때마다 무작위 정산.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "shop_bookmark",
@@ -377,7 +432,8 @@ object ItemCatalog {
             effect = ItemEffect.SHOP_LOCK_SYSTEM,
             power = 1f,
             defaultUnlocked = false,
-            description = "상점에서 L로 아이템 하나를 리롤 보호."
+            description = "상점에서 L로 아이템 하나를 리롤 보호.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "coin_shield",
@@ -387,7 +443,8 @@ object ItemCatalog {
             effect = ItemEffect.COIN_SHIELD_SYSTEM,
             power = 1f,
             defaultUnlocked = false,
-            description = "피격 시 코인을 지불하고 피해를 무효화."
+            description = "피격 시 코인을 지불하고 피해를 무효화.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "interest_piggy_bank",
@@ -397,7 +454,8 @@ object ItemCatalog {
             effect = ItemEffect.COIN_INTEREST_SYSTEM,
             power = 1f,
             defaultUnlocked = false,
-            description = "상점 도착 시 보유 코인에 이자가 붙음."
+            description = "상점 도착 시 보유 코인에 이자가 붙음.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "near_miss_roulette",
@@ -407,7 +465,8 @@ object ItemCatalog {
             effect = ItemEffect.NEAR_MISS_ROULETTE_SYSTEM,
             power = 1f,
             defaultUnlocked = false,
-            description = "니어미스 4회마다 무작위 보상 발동."
+            description = "니어미스 4회마다 무작위 보상 발동.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "third_jump_core",
@@ -417,7 +476,8 @@ object ItemCatalog {
             effect = ItemEffect.EXTRA_JUMP,
             power = 1f,
             defaultUnlocked = true,
-            description = "점프 가능 횟수 +1. SPACE로 3단 점프 가능."
+            description = "점프 가능 횟수 +1. SPACE로 3단 점프 가능.",
+            kind = ItemKind.SYSTEM
         ),
         ItemDefinition(
             id = "gravity_anchor",
@@ -427,27 +487,52 @@ object ItemCatalog {
             effect = ItemEffect.QUICK_DROP,
             power = 1f,
             defaultUnlocked = true,
-            description = "공중에서 X를 누르면 즉시 착지."
+            description = "공중에서 X를 누르면 즉시 착지.",
+            kind = ItemKind.EQUIPMENT
+        ),
+        ItemDefinition(
+            id = "turbo_booster",
+            name = "터보 부스터",
+            rarity = ItemRarity.RARE,
+            tags = setOf(ItemTag.AGILITY, ItemTag.RISK),
+            effect = ItemEffect.ACTIVE_BOOST,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "X로 순간 질주. 앞의 장애물을 밀고 지나가며 거리와 점수 획득.",
+            kind = ItemKind.EQUIPMENT
         ),
         ItemDefinition(
             id = "time_jelly",
-            name = "시간 젤리",
+            name = "시간 정지 시계",
             rarity = ItemRarity.EPIC,
             tags = setOf(ItemTag.COMBO, ItemTag.SHIELD),
             effect = ItemEffect.TIME_SLOW,
             power = 1f,
             defaultUnlocked = true,
-            description = "X로 잠시 장애물 속도 45% 감소."
+            description = "X로 5초 동안 장애물과 기믹 속도 45% 감소.",
+            kind = ItemKind.EQUIPMENT
+        ),
+        ItemDefinition(
+            id = "phase_cloak",
+            name = "위상 망토",
+            rarity = ItemRarity.EPIC,
+            tags = setOf(ItemTag.SHIELD, ItemTag.RISK),
+            effect = ItemEffect.PHASE_SHIFT,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "X로 짧게 몸을 흐리게 만들어 충돌과 함정을 통과.",
+            kind = ItemKind.EQUIPMENT
         ),
         ItemDefinition(
             id = "shield_capsule",
-            name = "보호막 캡슐",
+            name = "순간 보호막",
             rarity = ItemRarity.RARE,
             tags = setOf(ItemTag.SHIELD),
             effect = ItemEffect.ACTIVE_SHIELD,
             power = 1f,
             defaultUnlocked = true,
-            description = "X로 3초 동안 피격 1회 무시."
+            description = "X로 3초 동안 피격 1회 무시.",
+            kind = ItemKind.EQUIPMENT
         ),
         ItemDefinition(
             id = "crate_firework",
@@ -457,17 +542,40 @@ object ItemCatalog {
             effect = ItemEffect.OBSTACLE_BREAK,
             power = 1f,
             defaultUnlocked = false,
-            description = "X로 가장 가까운 장애물 제거."
+            description = "X로 가장 가까운 장애물 제거. 보스전에서는 보스 피해.",
+            kind = ItemKind.EQUIPMENT
+        ),
+        ItemDefinition(
+            id = "hook_star",
+            name = "갈고리 별",
+            rarity = ItemRarity.RARE,
+            tags = setOf(ItemTag.AGILITY, ItemTag.GOLD),
+            effect = ItemEffect.HOOK_STAR,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "X로 앞쪽 코인 루트를 향해 끌려 올라감.",
+            kind = ItemKind.EQUIPMENT
+        ),
+        ItemDefinition(
+            id = "rewind_clock",
+            name = "되감기 시계",
+            rarity = ItemRarity.EPIC,
+            tags = setOf(ItemTag.COMBO, ItemTag.SHIELD),
+            effect = ItemEffect.REWIND_CLOCK,
+            power = 1f,
+            defaultUnlocked = false,
+            description = "X로 약 1초 전 위치와 체력을 되돌림.",
+            kind = ItemKind.EQUIPMENT
         ),
         ItemDefinition(
             id = "dash_feather",
             name = "질주 깃털",
             rarity = ItemRarity.RARE,
             tags = setOf(ItemTag.AGILITY, ItemTag.RISK),
-            effect = ItemEffect.AIR_DASH,
-            power = 150f,
+            effect = ItemEffect.NEAR_MISS_RANGE,
+            power = 10f,
             defaultUnlocked = false,
-            description = "X로 짧게 앞으로 대시."
+            description = "니어미스 판정 범위 +10. 민첩 빌드용 패시브."
         ),
         ItemDefinition(
             id = "overdrive_badge",
@@ -477,36 +585,192 @@ object ItemCatalog {
             effect = ItemEffect.NEAR_MISS_OVERDRIVE,
             power = 1f,
             defaultUnlocked = false,
-            description = "X로 5초간 니어미스 보상이 2배."
+            description = "8콤보마다 5초간 니어미스 보상이 2배.",
+            kind = ItemKind.SYSTEM
+        ),
+        ItemDefinition(
+            id = "glass_heart_contract",
+            name = "유리 심장 계약",
+            rarity = ItemRarity.RARE,
+            tags = setOf(ItemTag.RISK),
+            effect = ItemEffect.GLASS_HEART_CONTRACT,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "18초 동안 피격 피해 2배. 버티면 코인 +35.",
+            kind = ItemKind.CURSE_CONTRACT
+        ),
+        ItemDefinition(
+            id = "greed_contract",
+            name = "탐욕 계약",
+            rarity = ItemRarity.RARE,
+            tags = setOf(ItemTag.GOLD, ItemTag.RISK),
+            effect = ItemEffect.GREED_CONTRACT,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "다음 상점까지 코인 획득 2배. 피격 시 코인 35% 손실.",
+            kind = ItemKind.CURSE_CONTRACT
+        ),
+        ItemDefinition(
+            id = "silence_contract",
+            name = "침묵 계약",
+            rarity = ItemRarity.RARE,
+            tags = setOf(ItemTag.COMBO, ItemTag.RISK),
+            effect = ItemEffect.SILENCE_CONTRACT,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "20초 동안 장비 사용 불가. 버티면 희귀 상점 확률 증가.",
+            kind = ItemKind.CURSE_CONTRACT
+        ),
+        ItemDefinition(
+            id = "blood_contract",
+            name = "피의 계약",
+            rarity = ItemRarity.EPIC,
+            tags = setOf(ItemTag.RISK, ItemTag.HEAL),
+            effect = ItemEffect.BLOOD_CONTRACT,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "체력 80 소모. 다음 상점까지 니어미스 점수와 보스 피해 증가.",
+            kind = ItemKind.CURSE_CONTRACT
+        ),
+        ItemDefinition(
+            id = "golden_orbit",
+            name = "황금 궤도",
+            rarity = ItemRarity.EPIC,
+            tags = setOf(ItemTag.GOLD, ItemTag.AGILITY),
+            effect = ItemEffect.GOLDEN_ORBIT_EVOLUTION,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "코인을 모으면 궤도 충전. 가득 차면 앞 장애물을 제거.",
+            kind = ItemKind.EVOLUTION
+        ),
+        ItemDefinition(
+            id = "storm_landing",
+            name = "폭풍 착지",
+            rarity = ItemRarity.EPIC,
+            tags = setOf(ItemTag.AGILITY, ItemTag.RISK),
+            effect = ItemEffect.STORM_LANDING_EVOLUTION,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "중력 앵커 착지 충격파가 낮은 장애물을 제거.",
+            kind = ItemKind.EVOLUTION
+        ),
+        ItemDefinition(
+            id = "bounty_hunter",
+            name = "현상금 사냥꾼",
+            rarity = ItemRarity.EPIC,
+            tags = setOf(ItemTag.RISK, ItemTag.GOLD),
+            effect = ItemEffect.BOUNTY_HUNTER_EVOLUTION,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "현상금 보상과 보스 피해가 증가.",
+            kind = ItemKind.EVOLUTION
+        ),
+        ItemDefinition(
+            id = "time_thief",
+            name = "시간 도둑",
+            rarity = ItemRarity.EPIC,
+            tags = setOf(ItemTag.COMBO, ItemTag.AGILITY),
+            effect = ItemEffect.TIME_THIEF_EVOLUTION,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "니어미스가 시간 정지 시계 쿨타임을 크게 줄임.",
+            kind = ItemKind.EVOLUTION
+        ),
+        ItemDefinition(
+            id = "immortal_shield",
+            name = "불사 보호막",
+            rarity = ItemRarity.EPIC,
+            tags = setOf(ItemTag.SHIELD, ItemTag.HEAL),
+            effect = ItemEffect.IMMORTAL_SHIELD_EVOLUTION,
+            power = 1f,
+            defaultUnlocked = true,
+            description = "죽을 피해를 한 번 막고 짧은 보호막을 부여.",
+            kind = ItemKind.EVOLUTION
         )
     )
 
     private val byId = all.associateBy { it.id }
+    private val shopItemIds = setOf(
+        "third_jump_core",
+        "slide_scanner",
+        "air_wallet",
+        "magnet_bracelet",
+        "coin_streak_engine",
+        "bounty_stamp",
+        "fever_clock",
+        "potion_belt",
+        "shop_bookmark",
+        "near_miss_roulette",
+        "gravity_anchor",
+        "turbo_booster",
+        "time_jelly",
+        "phase_cloak",
+        "shield_capsule",
+        "crate_firework",
+        "hook_star",
+        "rewind_clock",
+        "glass_heart_contract",
+        "greed_contract",
+        "silence_contract"
+    )
 
     fun find(id: String): ItemDefinition? {
         return byId[id]
     }
 
     fun defaultUnlockedIds(): Set<String> {
-        return all.filter { it.defaultUnlocked }.map { it.id }.toSet()
+        return all.filter { it.defaultUnlocked && it.id in shopItemIds }.map { it.id }.toSet()
     }
 
     fun lockedDefinitions(): List<ItemDefinition> {
-        return all.filter { !it.defaultUnlocked }
+        return all.filter { !it.defaultUnlocked && it.id in shopItemIds }
     }
 
     fun unlockedDefinitions(unlockedIds: Set<String>): List<ItemDefinition> {
-        return all.filter { it.defaultUnlocked || it.id in unlockedIds }
+        return all.filter { it.id in shopItemIds && (it.defaultUnlocked || it.id in unlockedIds) }
     }
 }
+
+private val evolutionRules = listOf(
+    EvolutionRule(
+        resultId = "golden_orbit",
+        requiredIds = setOf("magnet_bracelet", "coin_streak_engine", "air_wallet")
+    ),
+    EvolutionRule(
+        resultId = "storm_landing",
+        requiredIds = setOf("gravity_anchor", "third_jump_core", "slide_scanner")
+    ),
+    EvolutionRule(
+        resultId = "bounty_hunter",
+        requiredIds = setOf("bounty_stamp", "crate_firework"),
+        requiredTag = ItemTag.RISK,
+        requiredTagCount = 3
+    ),
+    EvolutionRule(
+        resultId = "time_thief",
+        requiredIds = setOf("time_jelly", "charge_battery", "near_miss_roulette")
+    ),
+    EvolutionRule(
+        resultId = "immortal_shield",
+        requiredIds = setOf("shield_capsule", "potion_belt", "guard_jelly")
+    )
+)
 
 class InventorySystem {
     private val stacks = mutableMapOf<String, Int>()
     private var stageShieldUsed = false
     private var stageComboSaveUsed = false
+    private var currentEquipmentId: String? = null
+    private var activeCurse: CurseState? = null
+    private var rareShopBoost = 0
+    private val triggeredEvolutions = mutableSetOf<String>()
 
     fun resetRun() {
         stacks.clear()
+        currentEquipmentId = null
+        activeCurse = null
+        rareShopBoost = 0
+        triggeredEvolutions.clear()
         resetStage()
     }
 
@@ -516,29 +780,22 @@ class InventorySystem {
     }
 
     fun canAdd(definition: ItemDefinition): Boolean {
+        if (definition.kind == ItemKind.EVOLUTION) {
+            return false
+        }
+        if (definition.kind == ItemKind.CURSE_CONTRACT && activeCurse != null) {
+            return false
+        }
         return stackOf(definition) < maxStackOf(definition)
     }
 
     fun maxStackOf(definition: ItemDefinition): Int {
-        return when (definition.effect) {
-            ItemEffect.EXTRA_JUMP,
-            ItemEffect.QUICK_DROP,
-            ItemEffect.TIME_SLOW,
-            ItemEffect.ACTIVE_SHIELD,
-            ItemEffect.OBSTACLE_BREAK,
-            ItemEffect.AIR_DASH,
-            ItemEffect.NEAR_MISS_OVERDRIVE,
-            ItemEffect.COIN_STREAK_SYSTEM,
-            ItemEffect.SLIDE_TRICK_SYSTEM,
-            ItemEffect.BOUNTY_SYSTEM,
-            ItemEffect.FEVER_SYSTEM,
-            ItemEffect.EMERGENCY_POTION_SYSTEM,
-            ItemEffect.LUCKY_SLOT_SYSTEM,
-            ItemEffect.SHOP_LOCK_SYSTEM,
-            ItemEffect.COIN_SHIELD_SYSTEM,
-            ItemEffect.COIN_INTEREST_SYSTEM,
-            ItemEffect.NEAR_MISS_ROULETTE_SYSTEM -> 1
-            else -> 3
+        return when (definition.kind) {
+            ItemKind.EQUIPMENT -> 3
+            ItemKind.SYSTEM,
+            ItemKind.CURSE_CONTRACT,
+            ItemKind.EVOLUTION -> 1
+            ItemKind.PASSIVE -> 3
         }
     }
 
@@ -548,7 +805,24 @@ class InventorySystem {
         }
 
         stacks[definition.id] = stackOf(definition) + 1
+        when (definition.kind) {
+            ItemKind.EQUIPMENT -> currentEquipmentId = definition.id
+            ItemKind.CURSE_CONTRACT -> activeCurse = createCurseState(definition)
+            ItemKind.EVOLUTION -> triggeredEvolutions.add(definition.id)
+            ItemKind.PASSIVE,
+            ItemKind.SYSTEM -> Unit
+        }
         return true
+    }
+
+    private fun createCurseState(definition: ItemDefinition): CurseState {
+        return when (definition.effect) {
+            ItemEffect.GLASS_HEART_CONTRACT -> CurseState(definition, timeLeft = 18f, expiresAtShop = false)
+            ItemEffect.GREED_CONTRACT -> CurseState(definition, timeLeft = -1f, expiresAtShop = true)
+            ItemEffect.SILENCE_CONTRACT -> CurseState(definition, timeLeft = 20f, expiresAtShop = false)
+            ItemEffect.BLOOD_CONTRACT -> CurseState(definition, timeLeft = -1f, expiresAtShop = true)
+            else -> CurseState(definition, timeLeft = 0f, expiresAtShop = false)
+        }
     }
 
     fun stackOf(definition: ItemDefinition): Int {
@@ -622,18 +896,13 @@ class InventorySystem {
         return value
     }
 
-    fun coinPickupGain(baseCoins: Int, hpRatio: Float, airborne: Boolean): Int {
+    fun coinPickupGain(baseCoins: Int, hpRatio: Float): Int {
         var multiplier = 1f + effectValue(ItemEffect.COIN_PICKUP_VALUE)
         if (tagCount(ItemTag.GOLD) >= 2) multiplier += 0.15f
         if (tagCount(ItemTag.GOLD) >= 4) multiplier += 0.20f
         multiplier *= lowHpRewardMultiplier(hpRatio)
 
-        var value = (baseCoins * multiplier).roundToInt()
-        if (airborne) {
-            value += effectValue(ItemEffect.AIR_COIN_BONUS).roundToInt()
-        }
-
-        return value.coerceAtLeast(1)
+        return (baseCoins * multiplier).roundToInt().coerceAtLeast(1)
     }
 
     fun coinMagnetRadius(): Float {
@@ -680,8 +949,16 @@ class InventorySystem {
         return effectValue(ItemEffect.QUICK_DROP) > 0f
     }
 
+    fun hasActiveBoost(): Boolean {
+        return effectValue(ItemEffect.ACTIVE_BOOST) > 0f
+    }
+
     fun hasTimeSlow(): Boolean {
         return effectValue(ItemEffect.TIME_SLOW) > 0f
+    }
+
+    fun hasPhaseShift(): Boolean {
+        return effectValue(ItemEffect.PHASE_SHIFT) > 0f
     }
 
     fun hasActiveShield(): Boolean {
@@ -700,16 +977,33 @@ class InventorySystem {
         return effectValue(ItemEffect.NEAR_MISS_OVERDRIVE) > 0f
     }
 
+    fun currentEquipment(): EquipmentState? {
+        val id = currentEquipmentId ?: return null
+        val definition = ItemCatalog.find(id) ?: return null
+        return EquipmentState(definition, stackOf(definition).coerceAtLeast(1))
+    }
+
+    fun equipmentCooldown(): Float {
+        val level = currentEquipment()?.level ?: return 0f
+        return (7f - (level - 1) * 1f).coerceAtLeast(3f)
+    }
+
+    fun equipmentDuration(baseDuration: Float): Float {
+        val level = currentEquipment()?.level ?: return baseDuration
+        return baseDuration + (level - 1) * 0.45f
+    }
+
+    fun isEquipmentSilenced(): Boolean {
+        return activeCurse?.definition?.effect == ItemEffect.SILENCE_CONTRACT
+    }
+
+    fun equipmentSummary(): String {
+        val equipment = currentEquipment() ?: return "없음"
+        return "${equipment.definition.name} Lv${equipment.level}"
+    }
+
     fun activeAbilitySummary(): String {
-        val abilities = mutableListOf<String>()
-        if (bonusJumpCount() > 0) abilities.add("3단점프")
-        if (hasQuickDrop()) abilities.add("급강하")
-        if (hasTimeSlow()) abilities.add("시간감속")
-        if (hasActiveShield()) abilities.add("보호막")
-        if (hasObstacleBreak()) abilities.add("장애물제거")
-        if (dashDistance() > 0f) abilities.add("대시")
-        if (hasNearMissOverdrive()) abilities.add("오버드라이브")
-        return if (abilities.isEmpty()) "없음" else abilities.joinToString("/")
+        return equipmentSummary()
     }
 
     fun freeRerollsPerShop(): Int {
@@ -720,8 +1014,22 @@ class InventorySystem {
         return effectValue(ItemEffect.COIN_STREAK_SYSTEM) > 0f
     }
 
-    fun hasSlideTrickSystem(): Boolean {
-        return effectValue(ItemEffect.SLIDE_TRICK_SYSTEM) > 0f
+    fun hpDrainMultiplier(combo: Int): Float {
+        val guardPower = effectValue(ItemEffect.COMBO_DRAIN_GUARD)
+        if (guardPower <= 0f || combo <= 0) {
+            return 1f
+        }
+
+        val reduction = ((combo / 10f) * 0.08f * guardPower).coerceAtMost(0.65f)
+        return 1f - reduction
+    }
+
+    fun windColumnMultiplier(): Float {
+        return (1f + effectValue(ItemEffect.WIND_RIDER)).coerceAtMost(1.65f)
+    }
+
+    fun hasComboDrainGuard(): Boolean {
+        return effectValue(ItemEffect.COMBO_DRAIN_GUARD) > 0f
     }
 
     fun hasBountySystem(): Boolean {
@@ -759,7 +1067,7 @@ class InventorySystem {
     fun systemSummary(): String {
         val systems = mutableListOf<String>()
         if (hasCoinStreakSystem()) systems.add("코인연쇄")
-        if (hasSlideTrickSystem()) systems.add("슬라이드보상")
+        if (hasComboDrainGuard()) systems.add("콤보생존")
         if (hasBountySystem()) systems.add("현상금")
         if (hasFeverSystem()) systems.add("피버")
         if (hasEmergencyPotionSystem()) systems.add("긴급회복")
@@ -768,7 +1076,135 @@ class InventorySystem {
         if (hasCoinShieldSystem()) systems.add("동전방패")
         if (hasCoinInterestSystem()) systems.add("이자")
         if (hasNearMissRouletteSystem()) systems.add("룰렛")
+        if (hasNearMissOverdrive()) systems.add("오버드라이브")
         return if (systems.isEmpty()) "없음" else systems.joinToString("/")
+    }
+
+    fun activeCurse(): CurseState? {
+        return activeCurse
+    }
+
+    fun curseSummary(): String {
+        val curse = activeCurse ?: return "없음"
+        val timeText = if (curse.timeLeft > 0f) " ${curse.timeLeft.toInt() + 1}초" else " 다음 상점까지"
+        return "${curse.definition.name}$timeText"
+    }
+
+    fun updateCurse(delta: Float): CurseResolution? {
+        val curse = activeCurse ?: return null
+        if (curse.timeLeft <= 0f) {
+            return null
+        }
+
+        curse.timeLeft = (curse.timeLeft - delta).coerceAtLeast(0f)
+        if (curse.timeLeft > 0f) {
+            return null
+        }
+
+        activeCurse = null
+        return when (curse.definition.effect) {
+            ItemEffect.GLASS_HEART_CONTRACT -> CurseResolution(
+                message = "유리 심장 계약 성공! 코인 +35",
+                coinGain = 35
+            )
+            ItemEffect.SILENCE_CONTRACT -> {
+                rareShopBoost += 2
+                CurseResolution(
+                    message = "침묵 계약 성공! 다음 상점 희귀 확률 증가",
+                    rareShopBoost = 2
+                )
+            }
+            else -> CurseResolution(message = "${curse.definition.name} 종료")
+        }
+    }
+
+    fun completeShopCurse(): CurseResolution? {
+        val curse = activeCurse ?: return null
+        if (!curse.expiresAtShop) {
+            return null
+        }
+
+        activeCurse = null
+        return when (curse.definition.effect) {
+            ItemEffect.GREED_CONTRACT -> CurseResolution(message = "탐욕 계약 완료")
+            ItemEffect.BLOOD_CONTRACT -> CurseResolution(message = "피의 계약 완료")
+            else -> CurseResolution(message = "${curse.definition.name} 완료")
+        }
+    }
+
+    fun curseDamageMultiplier(): Float {
+        return if (activeCurse?.definition?.effect == ItemEffect.GLASS_HEART_CONTRACT) 2f else 1f
+    }
+
+    fun curseCoinMultiplier(): Float {
+        return if (activeCurse?.definition?.effect == ItemEffect.GREED_CONTRACT) 2f else 1f
+    }
+
+    fun curseNearMissScoreMultiplier(): Float {
+        return if (activeCurse?.definition?.effect == ItemEffect.BLOOD_CONTRACT) 1.6f else 1f
+    }
+
+    fun curseBossDamageMultiplier(): Float {
+        return if (activeCurse?.definition?.effect == ItemEffect.BLOOD_CONTRACT) 1.7f else 1f
+    }
+
+    fun curseHitPenalty(): CurseResolution? {
+        val curse = activeCurse ?: return null
+        return when (curse.definition.effect) {
+            ItemEffect.GREED_CONTRACT -> CurseResolution(
+                message = "탐욕 계약 피격! 코인 35% 손실",
+                coinLossRate = 0.35f
+            )
+            else -> null
+        }
+    }
+
+    fun shopRarityBias(): Int {
+        return rareShopBoost
+    }
+
+    fun checkEvolutions(): List<ItemDefinition> {
+        val evolved = mutableListOf<ItemDefinition>()
+
+        for (rule in evolutionRules) {
+            if (rule.resultId in triggeredEvolutions) {
+                continue
+            }
+            if (!rule.requiredIds.all { id -> (stacks[id] ?: 0) > 0 }) {
+                continue
+            }
+            if (rule.requiredTag != null && tagCount(rule.requiredTag) < rule.requiredTagCount) {
+                continue
+            }
+
+            val definition = ItemCatalog.find(rule.resultId) ?: continue
+            stacks[definition.id] = 1
+            triggeredEvolutions.add(definition.id)
+            evolved.add(definition)
+        }
+
+        return evolved
+    }
+
+    fun hasEvolution(id: String): Boolean {
+        return id in triggeredEvolutions || ((stacks[id] ?: 0) > 0 && ItemCatalog.find(id)?.kind == ItemKind.EVOLUTION)
+    }
+
+    fun evolutionSummary(): String {
+        val names = triggeredEvolutions
+            .mapNotNull { id -> ItemCatalog.find(id)?.name }
+
+        return if (names.isEmpty()) "없음" else names.joinToString("/")
+    }
+
+    fun purchaseSummary(definition: ItemDefinition): String {
+        return when (definition.kind) {
+            ItemKind.EQUIPMENT -> "장비 장착: ${definition.name} Lv${stackOf(definition)}"
+            ItemKind.CURSE_CONTRACT -> "저주 계약 시작: ${definition.name}"
+            ItemKind.SYSTEM -> "패시브 해금: ${definition.name}"
+            ItemKind.EVOLUTION -> "진화 발동: ${definition.name}"
+            ItemKind.PASSIVE -> "구매: ${definition.name}"
+        }
     }
 
     fun shopTagBias(tags: Set<ItemTag>): Int {
@@ -891,6 +1327,7 @@ class ShopSystem(
 
     private fun rollOffers(inventory: InventorySystem, discountRate: Float) {
         val availableDefinitions = ItemCatalog.unlockedDefinitions(metaProgression.unlockedItemIds())
+            .filter { it.kind != ItemKind.EVOLUTION }
             .filter { inventory.canAdd(it) }
 
         val locked = lockedDefinition?.takeIf { lockedItem ->
@@ -964,7 +1401,7 @@ class ShopSystem(
         }
 
         val rerollMultiplier = 1f + paidRerollsThisShop * 0.45f
-        val rawCost = 10f * depthMultiplier() * rerollMultiplier * (1f - discountRate)
+        val rawCost = 14f * depthMultiplier() * rerollMultiplier * (1f - discountRate)
         return rawCost.roundToInt().coerceAtLeast(1)
     }
 
@@ -989,11 +1426,23 @@ class ShopSystem(
             ItemRarity.RARE -> 4 + shopDepth / 2
             ItemRarity.EPIC -> 1 + shopDepth / 2
         }
-        return (rarityWeight + inventory.shopTagBias(definition.tags)).coerceAtLeast(1)
+        val rarityBoost = when (definition.rarity) {
+            ItemRarity.COMMON -> 0
+            ItemRarity.RARE -> inventory.shopRarityBias()
+            ItemRarity.EPIC -> inventory.shopRarityBias() * 2
+        }
+        val kindBoost = when (definition.kind) {
+            ItemKind.EQUIPMENT -> 5
+            ItemKind.SYSTEM -> 3
+            ItemKind.CURSE_CONTRACT -> 1
+            ItemKind.PASSIVE -> -2
+            ItemKind.EVOLUTION -> 0
+        }
+        return (rarityWeight + rarityBoost + kindBoost + inventory.shopTagBias(definition.tags)).coerceAtLeast(1)
     }
 
     private fun depthMultiplier(): Float {
-        return 1f + (shopDepth - 1).coerceAtLeast(0) * 0.15f
+        return 1f + (shopDepth - 1).coerceAtLeast(0) * 0.20f
     }
 }
 

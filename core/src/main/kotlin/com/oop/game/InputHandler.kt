@@ -56,6 +56,7 @@ object InputHandler {
     val Z = Input.Keys.Z //슬라이드 키
     val ENTER = Input.Keys.ENTER
     val R = Input.Keys.R // 재시작 키
+    val S = Input.Keys.S // 상점 스킵 키
     val U = Input.Keys.U // 아이템 해금 키
     val X = Input.Keys.X // 액티브 아이템 키
     val L = Input.Keys.L // 상점 아이템 예약 키

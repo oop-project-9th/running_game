@@ -337,7 +337,7 @@ class PatternSpawner(
                 emptyList(),
                 listOf(GimmickItem(GimmickType.SPRING, 360f, 82f)),
                 listOf(GimmickItem(GimmickType.PIT, 520f, 138f)),
-                listOf(GimmickItem(GimmickType.BOOST, 420f, 100f))
+                emptyList()
             )
 
             2 -> listOf(
@@ -360,7 +360,7 @@ class PatternSpawner(
                     GimmickItem(GimmickType.MUD, 260f, 220f),
                     GimmickItem(GimmickType.SPIKES, 760f, 150f)
                 ),
-                listOf(GimmickItem(GimmickType.BOOST, 460f, 110f))
+                listOf(GimmickItem(GimmickType.PIT, 460f, 150f))
             )
 
             4 -> listOf(
@@ -373,10 +373,7 @@ class PatternSpawner(
                     GimmickItem(GimmickType.SPIKES, 900f, 160f)
                 ),
                 listOf(GimmickItem(GimmickType.MUD, 260f, 300f)),
-                listOf(
-                    GimmickItem(GimmickType.SPRING, 300f, 82f),
-                    GimmickItem(GimmickType.BOOST, 760f, 120f)
-                )
+                listOf(GimmickItem(GimmickType.SPRING, 300f, 82f))
             )
 
             else -> listOf(
@@ -392,10 +389,7 @@ class PatternSpawner(
                     GimmickItem(GimmickType.MUD, 260f, 250f),
                     GimmickItem(GimmickType.SPRING, 780f, 82f)
                 ),
-                listOf(
-                    GimmickItem(GimmickType.BOOST, 340f, 130f),
-                    GimmickItem(GimmickType.PIT, 980f, 220f)
-                )
+                listOf(GimmickItem(GimmickType.PIT, 980f, 220f))
             )
         }
     }
